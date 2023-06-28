@@ -15,10 +15,10 @@ ext_modules = [
 ]
 
 setup(
-    name="w2",
+    name="screening",
     version=__version__,
     author="Wonjun Lee",
-    author_email="wlee@g.ucla.edu",
+    author_email="wlee@ucla.edu",
     description="Python wrapper for the screening problem (join work with Flavien Leger)",
     long_description="""
         (the details will be added)
