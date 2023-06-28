@@ -50,6 +50,11 @@ public:
         vyy_.resize(n1*n2);
     }
 
+
+    void print_out() const{
+        std::cout << "n1: " << n1 << " n2: " << n2 << " dx: " << dx_ << " dy: " << dy_ << '\n';
+    }
+
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function(double x,double y, std::vector<double>& func) const{
         double indj=fmin(n1-1,fmax(0,x*n1-0.5));
