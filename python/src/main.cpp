@@ -109,6 +109,14 @@ public:
     /**
      * (rhsx, rhsy) = \nabla (\phi - b)
      * (outputx, outputy) = g^{ij}\nabla (\phi - b)
+     * 
+     * input:
+     *  1. np outputx_np
+     *  2. np outputy_np
+     *  3. np phi_np
+     *  4. np psi_np
+     *  5. np rhsx_np
+     *  6. np rhsy_np 
      */
     void compute_inverse_g(py::array_t<double>& outputx_np, py::array_t<double>& outputy_np, py::array_t<double>& phi_np, py::array_t<double>& psi_np, py::array_t<double>& rhsx_np, py::array_t<double>& rhsy_np){
         py::buffer_info outputx_buf = outputx_np.request();
@@ -141,6 +149,8 @@ public:
 
                 outputx[i*n1+j] = vxx_val * rhsx[i*n1+j] + vxy_val * rhsy[i*n1+j];
                 outputy[i*n1+j] = vxy_val * rhsx[i*n1+j] + vyy_val * rhsy[i*n1+j];
+
+                std::cout << "Outputx: " << outputx[i*n1+j] << '\n';
             }
         }
     }
