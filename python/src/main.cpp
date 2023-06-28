@@ -196,5 +196,6 @@ PYBIND11_MODULE(screening, m) {
 
     py::class_<HelperClass>(m, "HelperClass")
             .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
-            .def("compute_inverse_g", &HelperClass::compute_inverse_g);
+            .def("compute_inverse_g", &HelperClass::compute_inverse_g)
+            .def("print_out", &HelperClass::print_out);
 }
