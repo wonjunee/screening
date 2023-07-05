@@ -9,19 +9,46 @@ namespace py = pybind11;
  * input f_np, a_np
  * output f_np
  */
-void function1(py::array_t<double>& f_np, py::array_t<double>& X_np){
+void compute_dx(py::array_t<double>& out_np, py::array_t<double>& in_np, double dy){
    
-    py::buffer_info f_buf = f_np.request();
-    py::buffer_info X_buf = X_np.request();
-    double* f = static_cast<double *>(f_buf.ptr);
-    double* X = static_cast<double *>(X_buf.ptr);
+    py::buffer_info out_buf = out_np.request();
+    py::buffer_info in_buf = in_np.request();
+    double* out = static_cast<double *>(out_buf.ptr);
+    double* phi = static_cast<double *>(in_buf.ptr);
 
-    int n1 = X_buf.shape[0];
-    int n2 = X_buf.shape[1];
+    int n1 = in_buf.shape[0];
+    int n2 = in_buf.shape[1];
 
-    for(int i=1;i<n2-1;++i){
-        for(int j=1;j<n1-1;++j){
-            f[i*n1+j] = n1*n1*(X[(i+1)*n1+j]-2.0*X[(i-1)*n1+j]+X[(i-1)*n1+j]) + n2*n2*(X[i*n1+j+1]-2.0*X[i*n1+j]+X[i*n1+j-1]);
+    for(int i=0;i<n2;++i){
+        for(int j=0;j<n1;++j){
+            int jp = fmin(j+1, n1-1);
+            int jm = fmax(j-1, 0);
+            out[i*n1+j] = (phi[i*n1+jp] - phi[i*n1+jm])/(2*dy);
+        }
+    }
+}
+  
+  
+  
+/**
+ * input f_np, a_np
+ * output f_np
+ */
+void compute_dy(py::array_t<double>& out_np, py::array_t<double>& in_np, double dy){
+   
+    py::buffer_info out_buf = out_np.request();
+    py::buffer_info in_buf = in_np.request();
+    double* out = static_cast<double *>(out_buf.ptr);
+    double* phi = static_cast<double *>(in_buf.ptr);
+
+    int n1 = in_buf.shape[0];
+    int n2 = in_buf.shape[1];
+
+    for(int i=0;i<n2;++i){
+        for(int j=0;j<n1;++j){
+            int ip = fmin(i+1, n2-1);
+            int im = fmax(i-1, 0);
+            out[i*n1+j] = (phi[ip*n1+j] - phi[im*n1+j])/(2*dy);
         }
     }
 }
@@ -138,6 +165,7 @@ public:
         double* rhsx = static_cast<double *>(rhsx_buf.ptr);
         double* rhsy = static_cast<double *>(rhsy_buf.ptr);
 
+
         calculate_gradient_vxx(vxx_, psi, dx_);
         calculate_gradient_vyy(vyy_, psi, dx_);
         calculate_gradient_vxy(vxy_, psi, dx_);
@@ -155,8 +183,6 @@ public:
 
                 outputx[i*n1+j] = vxx_val * rhsx[i*n1+j] + vxy_val * rhsy[i*n1+j];
                 outputy[i*n1+j] = vxy_val * rhsx[i*n1+j] + vyy_val * rhsy[i*n1+j];
-
-                std::cout << "Outputx: " << outputx[i*n1+j] << '\n';
             }
         }
     }
@@ -165,37 +191,17 @@ public:
 
 
 
-
-
-// void compute_inverse_g(py::array_t<double>& phi_np){
-//     py::buffer_info phi_buf = phi_np.request();
-//     double* phi = static_cast<double *>(phi_buf.ptr);
-
-//     int n1 = phi_buf.shape[0];
-//     int n2 = phi_buf.shape[1];
-
-//     std::vector<std::vector<int> > directions = {{1,0}, {0,1}, {-1,0}, {0,-1}};
-
-//     // interior
-//     for(int i=1;i<n2-1;++i){
-//         for(int j=1;j<n1-1;++j){
-
-//         }
-//     }
-// }
-
-
 // --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 
 PYBIND11_MODULE(screening, m) {
     // optional module docstring
-    m.doc() = "pybind11 for screening code";
+    m.doc() = "C++ wrapper for screening code";
 
-    m.def("function1", &function1, "example function");
+    m.def("compute_dx", &compute_dx, "compute gradient x");
+    m.def("compute_dy", &compute_dy, "compute gradient y");
 
     py::class_<HelperClass>(m, "HelperClass")
-            .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
-            .def("compute_inverse_g", &HelperClass::compute_inverse_g)
-            .def("print_out", &HelperClass::print_out);
+        .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
+        .def("compute_inverse_g", &HelperClass::compute_inverse_g);
 }
