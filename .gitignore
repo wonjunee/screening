@@ -3,3 +3,5 @@
 *.DS_Store
 *.pyc
 *.o
+python/build/lib.macosx-10.9-x86_64-3.6/screening.cpython-36m-darwin.so
+python/build/temp.macosx-10.9-x86_64-3.6/src/main.o
