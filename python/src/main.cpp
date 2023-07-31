@@ -1,4 +1,5 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/iostream.h>
 #include <pybind11/numpy.h>
 #include <iostream>
 #include <vector>
@@ -13,8 +14,8 @@ void compute_dx(py::array_t<double>& out_np, py::array_t<double>& in_np, double 
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info in_buf = in_np.request();
-    double* out = static_cast<double *>(out_buf.ptr);
-    double* phi = static_cast<double *>(in_buf.ptr);
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *phi = static_cast<double *>(in_buf.ptr);
 
     int n1 = in_buf.shape[0];
     int n2 = in_buf.shape[1];
@@ -51,8 +52,8 @@ void compute_dy(py::array_t<double>& out_np, py::array_t<double>& in_np, double 
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info in_buf = in_np.request();
-    double* out = static_cast<double *>(out_buf.ptr);
-    double* phi = static_cast<double *>(in_buf.ptr);
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *phi = static_cast<double *>(in_buf.ptr);
 
     int n1 = in_buf.shape[0];
     int n2 = in_buf.shape[1];
@@ -88,9 +89,9 @@ void c_transform_cpp(py::array_t<double>& out_np, py::array_t<double>& phi_np, p
     py::buffer_info out_buf = out_np.request();
     py::buffer_info phi_buf = phi_np.request();
     py::buffer_info cost_buf = cost_np.request();
-    double* out = static_cast<double *>(out_buf.ptr);
-    double* phi = static_cast<double *>(phi_buf.ptr);
-    double* cost = static_cast<double *>(cost_buf.ptr);
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *phi = static_cast<double *>(phi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
 
     int n1 = phi_buf.shape[0];
     int n2 = phi_buf.shape[1];
@@ -117,9 +118,9 @@ void c_transform_forward_cpp(py::array_t<double>& out_np, py::array_t<double>& p
     py::buffer_info out_buf = out_np.request();
     py::buffer_info psi_buf = psi_np.request();
     py::buffer_info cost_buf = cost_np.request();
-    double* out = static_cast<double *>(out_buf.ptr);
-    double* psi = static_cast<double *>(psi_buf.ptr);
-    double* cost = static_cast<double *>(cost_buf.ptr);
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *psi = static_cast<double *>(psi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
 
     int n1 = psi_buf.shape[0];
     int n2 = psi_buf.shape[1];
@@ -149,10 +150,10 @@ void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, p
     py::buffer_info psi_buf = psi_np.request();
     py::buffer_info phi_buf = phi_np.request();
     py::buffer_info cost_buf = cost_np.request();
-    double* out = static_cast<double *>(out_buf.ptr);
-    double* psi = static_cast<double *>(psi_buf.ptr);
-    double* phi = static_cast<double *>(phi_buf.ptr);
-    double* cost = static_cast<double *>(cost_buf.ptr);
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *psi = static_cast<double *>(psi_buf.ptr);
+    double *phi = static_cast<double *>(phi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
 
     int n1 = psi_buf.shape[0];
     int n2 = psi_buf.shape[1];
@@ -192,6 +193,95 @@ void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, p
 
 
 
+/**
+ * input f_np, a_np
+ * output f_np
+ * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
+ */
+void c_transform_epsilon_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, int yMax){
+   
+    py::buffer_info out_buf = out_np.request();
+    py::buffer_info psi_buf = psi_np.request();
+    py::buffer_info phi_buf = phi_np.request();
+    py::buffer_info cost_buf = cost_np.request();
+    double *out = static_cast<double *>(out_buf.ptr);
+    double *psi = static_cast<double *>(psi_buf.ptr);
+    double *phi = static_cast<double *>(phi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
+
+    
+    int n1 = psi_buf.shape[0];
+    int n2 = psi_buf.shape[1];
+
+    int N = n1*n2;
+    for(int i=0;i<N;++i){
+        double val = 0;
+        for(int jb=0;jb<N;++jb){
+            val += exp( (psi[i] - phi[jb] - cost[i*N+jb]) / epsilon);
+        }
+        out[i] = psi[i] - epsilon * log(val * dy * dy);
+    }
+}
+
+
+double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int N, int i, int j){
+    return exp( (psi[i] - phi[j] - cost[i*N+j]) / epsilon);
+}
+
+/**
+ * input f_np, a_np
+ * output f_np
+ * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
+ */
+void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, py::array_t<double>& b_np, double epsilon, double dx, double dy, int yMax){
+   
+    py::buffer_info nu_buf   = nu_np.request();
+    py::buffer_info rho_buf  = rho_np.request();
+    py::buffer_info psi_buf  = psi_np.request();
+    py::buffer_info phi_buf  = phi_np.request();
+    py::buffer_info cost_buf = cost_np.request();
+    py::buffer_info b_buf    = b_np.request();
+
+    double *nu   = static_cast<double *>(nu_buf.ptr);
+    double *rho  = static_cast<double *>(rho_buf.ptr);
+    double *psi  = static_cast<double *>(psi_buf.ptr);
+    double *phi  = static_cast<double *>(phi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
+    double *b    = static_cast<double *>(b_buf.ptr);
+    
+    int n1 = psi_buf.shape[0];
+    int n2 = psi_buf.shape[1];
+
+    int N = n1*n2;
+    // computing nu
+    for(int jb=0;jb<N;++jb){
+        double val = 0;
+        for(int i=0;i<N;++i){
+            val += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb);
+        }
+        nu[jb] = val * dx * dx;
+    }
+
+    // defining Q_i := \sum_k (\phi-b)^k \pi^{ik} dy^2
+    std::vector<double> Q(N);
+    for(int i=0;i<N;++i){
+        double val = 0;
+        for(int jb=0;jb<N;++jb){
+            val += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb) * (phi[jb] - b[jb]);
+        }
+        Q[i] = val * dy * dy;
+    }
+
+    // computing rho
+    for(int jb=0;jb<N;++jb){
+        double sum2 = 0;
+        for(int i=0;i<N;++i){
+            sum2 += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb) * Q[i];
+        }
+        rho[jb] = (nu[jb] * (phi[jb] - b[jb]) - sum2*dx*dx)/epsilon;
+    }
+    py::print("N:",N,"Hello, World!\n");
+}
 
 
 class HelperClass{
@@ -255,7 +345,7 @@ public:
         return interpolated_value;  
     }
 
-    void calculate_gradient_vxx(std::vector<double>& vxx, const double* phi, const double dx){
+    void calculate_gradient_vxx(std::vector<double>& vxx, const double *phi, const double dx){
         for(int i=0;i<n2;++i){
             for(int j=0;j<n1;++j){
                 // int jpp = fmin(n1-1,j+2);
@@ -267,7 +357,7 @@ public:
         }
     }
 
-    void calculate_gradient_vyy(std::vector<double>& vyy, const double* phi, const double dx){
+    void calculate_gradient_vyy(std::vector<double>& vyy, const double *phi, const double dx){
         for(int i=0;i<n2;++i){
             for(int j=0;j<n1;++j){
                 // int ipp = fmin(n2-1,i+2);
@@ -279,7 +369,7 @@ public:
         }
     }
 
-    void calculate_gradient_vxy(std::vector<double>& vxy, const double* phi, const double dx){
+    void calculate_gradient_vxy(std::vector<double>& vxy, const double *phi, const double dx){
         for(int i=0;i<n2;++i){
             for(int j=0;j<n1;++j){
                 int ip  = fmin(n2-1,i+1);
@@ -311,12 +401,12 @@ public:
         py::buffer_info psi_buf = psi_np.request();
         py::buffer_info rhsx_buf = rhsx_np.request();
         py::buffer_info rhsy_buf = rhsy_np.request();
-        double* outputx = static_cast<double *>(outputx_buf.ptr);
-        double* outputy = static_cast<double *>(outputy_buf.ptr);
-        double* phi = static_cast<double *>(phi_buf.ptr);
-        double* psi = static_cast<double *>(psi_buf.ptr);
-        double* rhsx = static_cast<double *>(rhsx_buf.ptr);
-        double* rhsy = static_cast<double *>(rhsy_buf.ptr);
+        double *outputx = static_cast<double *>(outputx_buf.ptr);
+        double *outputy = static_cast<double *>(outputy_buf.ptr);
+        double *phi = static_cast<double *>(phi_buf.ptr);
+        double *psi = static_cast<double *>(psi_buf.ptr);
+        double *rhsx = static_cast<double *>(rhsx_buf.ptr);
+        double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
 
         calculate_gradient_vxx(vxx_, psi, dx_);
@@ -385,11 +475,11 @@ public:
         py::buffer_info psi_buf = psi_np.request();
         py::buffer_info rhs_buf = rhs_np.request();
         
-        double* outputx = static_cast<double *>(outputx_buf.ptr);
-        double* outputy = static_cast<double *>(outputy_buf.ptr);
-        double* phi = static_cast<double *>(phi_buf.ptr);
-        double* psi = static_cast<double *>(psi_buf.ptr);
-        double* rhs = static_cast<double *>(rhs_buf.ptr);
+        double *outputx = static_cast<double *>(outputx_buf.ptr);
+        double *outputy = static_cast<double *>(outputy_buf.ptr);
+        double *phi = static_cast<double *>(phi_buf.ptr);
+        double *psi = static_cast<double *>(psi_buf.ptr);
+        double *rhs = static_cast<double *>(rhs_buf.ptr);
 
         // step 1: for each point we will find T(x)
         for(int i=0;i<n2;++i){
@@ -426,19 +516,19 @@ public:
         }
     }
 
-    double compute_theta(std::vector<int>& eta, const double* rhs, int i, int j){
+    double compute_theta(std::vector<int>& eta, const double *rhs, int i, int j){
         int jp = j + eta[0];
         int ip = i + eta[1];
         // check if interior
         return (rhs[ip*n1+jp] - rhs[i*n1+j])/(dy_ * sqrt(eta[0]*eta[0] + eta[1]*eta[1]));
     }
 
-    double compute_g(std::vector<int>& xi, std::vector<int>& eta, const double* phi, int i, int j){
+    double compute_g(std::vector<int>& xi, std::vector<int>& eta, const double *phi, int i, int j){
         std::vector<int> xi_eta = {xi[0]+eta[0], xi[1]+eta[1]};
         return 0.5 * (compute_delta(xi_eta,phi,i,j) - compute_delta(xi,phi,i,j) - compute_delta(eta,phi,i,j));
     }
 
-    double compute_delta(std::vector<int>& xi, const double* phi, int i, int j){
+    double compute_delta(std::vector<int>& xi, const double *phi, int i, int j){
         double y1 = (j+0.5) * dy_;
         double y2 = (i+0.5) * dy_;
 
@@ -487,10 +577,13 @@ PYBIND11_MODULE(screening, m) {
     m.def("compute_dx", &compute_dx, "compute gradient x");
     m.def("compute_dy", &compute_dy, "compute gradient y");
     
-    m.def("c_transform_cpp", &c_transform_cpp, "compute gradient y");
-    m.def("c_transform_forward_cpp", &c_transform_forward_cpp, "compute gradient y");
+    m.def("c_transform_cpp", &c_transform_cpp, "c transform from phi -> psi");
+    m.def("c_transform_forward_cpp", &c_transform_forward_cpp, "c transform from psi -> phi");
 
     m.def("approx_push_cpp", &approx_push_cpp, "approximate pushforward");
+    m.def("c_transform_epsilon_cpp", &c_transform_epsilon_cpp, "entropic c-transform");
+    m.def("compute_nu_and_rho_cpp", &compute_nu_and_rho_cpp, "compute nu and rho");
+    
 
     py::class_<HelperClass>(m, "HelperClass")
         .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
