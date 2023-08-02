@@ -144,7 +144,7 @@ void c_transform_forward_cpp(py::array_t<double>& out_np, py::array_t<double>& p
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, int yMax){
+void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, double yMax){
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info psi_buf = psi_np.request();
@@ -227,6 +227,99 @@ void c_transform_epsilon_cpp(py::array_t<double>& out_np, py::array_t<double>& p
 double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int N, int i, int j){
     return exp( (psi[i] - phi[j] - cost[i*N+j]) / epsilon);
 }
+
+/**
+ * S(y) = \argmin_x \psi(x) - c(x,y)
+ * Computing S_ind:[0...n_Y-1] -> [0...n_X-1]
+*/
+void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double>& psi_np, py::array_t<double>& cost_np){
+    py::buffer_info out_buf  = out_np.request();
+    py::buffer_info psi_buf  = psi_np.request();
+    py::buffer_info cost_buf = cost_np.request();
+
+    int *out     = static_cast<int *>(out_buf.ptr);
+    double *psi  = static_cast<double *>(psi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
+    
+    int n1 = psi_buf.shape[0];
+    int n2 = psi_buf.shape[1];
+
+    int N = n1*n2;
+
+    for(int j=0;j<N;++j){
+        int target_ind = 0;
+        double val         = psi[0] - cost[0*N+j];
+        for(int i=1;i<N;++i){
+            double new_val = psi[i] - cost[i*N+j];
+            if(new_val < val){
+                target_ind = i;
+                val        = new_val;
+            }
+        }
+        out[j] = target_ind;
+    }
+    py::print("done");
+}
+
+/**
+ * a = (y,y') b = (y,y'')
+ * $G(y)(a,b)= c(S(y),y')+c(S(y''),y)-c(S(y),y)-c(S(y''),y')$
+*/
+double compute_G(double* cost, int* S_ind, const int N, const int y, const int yp, const int ypp){
+    int S_y   = S_ind[y];
+    int S_ypp = S_ind[ypp];
+    return cost[S_y*N+yp] + cost[S_ypp*N+y] - cost[S_y*N+y] - cost[S_ypp*N+yp];
+}
+
+/**
+ * Computing G(y) which is a |B_y|x|B_y| matrix where B_y is the set of edges coming from y.
+*/
+void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, int node_ind){
+
+    py::buffer_info out_buf        = out_np.request();
+    py::buffer_info cost_buf       = cost_np.request();
+    py::buffer_info S_ind_buf      = S_ind_np.request();
+    py::buffer_info edge2target_buf= edge2target_np.request();
+    py::buffer_info node2edge_buf  = node2edge_np.request();
+
+    double *out        = static_cast<double *>(out_buf.ptr);
+    double *cost       = static_cast<double *>(cost_buf.ptr);
+    int    *S_ind      = static_cast<int *>(S_ind_buf.ptr);
+    int    *edge2target= static_cast<int *>(edge2target_buf.ptr);
+    int    *node2edge  = static_cast<int *>(node2edge_buf.ptr);
+    
+    int N = cost_buf.shape[0];
+
+    int edge_start = node2edge[node_ind];
+    int edge_end   = node2edge[node_ind+1];
+    int count = 0;
+    for(int ind2=edge_start;ind2<edge_end;++ind2){
+        int target2 = edge2target[ind2];
+        for(int ind1=edge_start;ind1<edge_end;++ind1){
+            int target1 = edge2target[ind1];
+            double val = compute_G(cost, S_ind, N, node_ind, target1, target2);
+            out[count] = val;
+            count++;
+        }
+    }
+}
+
+
+
+/**
+ * $G^{-1}(y)(z-y,z-y)$
+ * G(y)(z)  = \delta_c(S(y),y,S(z),z) = c(S(y), z) + c(S(z), y) - c(S(y), y) - c(S(z), z)
+ * G(indy)(indz) = C_{i_y, indz} + C_{i_z, indy} - C_{i_y, indy} - C_{i_z, indz}
+ * i_y = S_ind(indy), i_z = S_ind(indz)
+*/
+double compute_G_inv(double* cost, int* S_ind, const int N, const int indy, const int indz){
+    int i_y = S_ind[indy];
+    int i_z = S_ind[indz];
+    double val = cost[i_y*N+indz] + cost[i_z*N+indy] - cost[i_y*N+indy] - cost[i_z*N+indz];
+    return 1.0/(val+1e-4); // added 1e-4 for numerical stability../
+}
+
+
 
 /**
  * input f_np, a_np
@@ -472,13 +565,11 @@ public:
         py::buffer_info outputx_buf = outputx_np.request();
         py::buffer_info outputy_buf = outputy_np.request();
         py::buffer_info phi_buf = phi_np.request();
-        py::buffer_info psi_buf = psi_np.request();
         py::buffer_info rhs_buf = rhs_np.request();
         
         double *outputx = static_cast<double *>(outputx_buf.ptr);
         double *outputy = static_cast<double *>(outputy_buf.ptr);
         double *phi = static_cast<double *>(phi_buf.ptr);
-        double *psi = static_cast<double *>(psi_buf.ptr);
         double *rhs = static_cast<double *>(rhs_buf.ptr);
 
         // step 1: for each point we will find T(x)
@@ -583,7 +674,9 @@ PYBIND11_MODULE(screening, m) {
     m.def("approx_push_cpp", &approx_push_cpp, "approximate pushforward");
     m.def("c_transform_epsilon_cpp", &c_transform_epsilon_cpp, "entropic c-transform");
     m.def("compute_nu_and_rho_cpp", &compute_nu_and_rho_cpp, "compute nu and rho");
-    
+
+    m.def("compute_Sy_cpp", &compute_Sy_cpp, "computing S(y) from for each y");
+    m.def("compute_Gy_cpp", &compute_Gy_cpp, "Compute a matrix for G(y)");
 
     py::class_<HelperClass>(m, "HelperClass")
         .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
