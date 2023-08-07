@@ -8,3 +8,5 @@ python/build/temp.macosx-10.9-x86_64-3.6/src/main.o
 python/build/lib.macosx-10.9-x86_64-3.6/screening.cpython-36m-darwin.so
 python/screening.cpython-36m-darwin.so
 .vscode/settings.json
+python/build/temp.macosx-10.9-x86_64-3.6/src/main.o
+python/build/lib.macosx-10.9-x86_64-3.6/screening.cpython-36m-darwin.so
