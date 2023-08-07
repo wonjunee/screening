@@ -229,7 +229,8 @@ double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int
 }
 
 /**
- * S(y) = \argmin_x \psi(x) - c(x,y)
+ * S(y)   = \argmax_x \psi(x) - c(x,y)
+ * phi(y) = \max_x \psi(x) - c(x,y) = \psi(S(y)) - c(S(y),y)
  * Computing S_ind:[0...n_Y-1] -> [0...n_X-1]
 */
 void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double>& psi_np, py::array_t<double>& cost_np){
@@ -251,7 +252,7 @@ void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double>& psi_np, py::a
         double val         = psi[0] - cost[0*N+j];
         for(int i=1;i<N;++i){
             double new_val = psi[i] - cost[i*N+j];
-            if(new_val < val){
+            if(new_val > val){
                 target_ind = i;
                 val        = new_val;
             }
