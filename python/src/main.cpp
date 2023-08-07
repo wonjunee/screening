@@ -263,32 +263,66 @@ void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double>& psi_np, py::a
 }
 
 /**
+ * c(x,y) = - x . y
+*/
+double compute_cost(const double x1,const double x2,const double y1,const double y2){
+    return - x1*y1 - x2*y2;
+}
+    
+    
+/**
  * a = (y,y') b = (y,y'')
  * $G(y)(a,b)= c(S(y),y')+c(S(y''),y)-c(S(y),y)-c(S(y''),y')$
 */
-double compute_G(double* cost, int* S_ind, const int N, const int y, const int yp, const int ypp){
-    int S_y   = S_ind[y];
-    int S_ypp = S_ind[ypp];
-    return cost[S_y*N+yp] + cost[S_ypp*N+y] - cost[S_y*N+y] - cost[S_ypp*N+yp];
+double compute_G(double *cost, double *phi, int *S_ind, const double dy, const int n, const int N, const int y, const int yp, const int ypp){
+    // ------------------------------------------
+    // This commented thing is argmax version of computing the delta_c
+    // ------------------------------------------
+    // int S_y   = S_ind[y];
+    // int S_ypp = S_ind[ypp];
+    // return cost[S_y*N+yp] + cost[S_ypp*N+y] - cost[S_y*N+y] - cost[S_ypp*N+yp];
+    // ------------------------------------------
+
+    // computing S(y) using \nabla \phi
+    int i = y/n;
+    int j = y%n;
+    double y1 = (j+0.5)*dy;
+    double y2 = (i+0.5)*dy;
+    double S_y1 = (phi[y] - phi[i*n+int(fmax(0,j-1))])/dy;
+    double S_y2 = (phi[y] - phi[int(fmax(0,i-1))*n+j])/dy;
+    
+    i = ypp/n;
+    j = ypp%n;
+    double S_ypp1  = (phi[ypp] - phi[i*n+int(fmax(0,j-1))])/dy;
+    double S_ypp2  = (phi[ypp] - phi[int(fmax(0,i-1))*n+j])/dy;
+
+    i = yp/n;
+    j = yp%n;
+    double yp1 = (j+0.5)*dy;
+    double yp2 = (i+0.5)*dy;
+    return compute_cost(S_y1,S_y2,yp1,yp2) + compute_cost(S_ypp1,S_ypp2,y1,y2) - compute_cost(S_y1,S_y2,y1,y2) - compute_cost(S_ypp1,S_ypp2,yp1,yp2);
 }
 
 /**
  * Computing G(y) which is a |B_y|x|B_y| matrix where B_y is the set of edges coming from y.
 */
-void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, int node_ind){
+void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, py::array_t<double>& phi_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, double dy, int node_ind){
 
     py::buffer_info out_buf        = out_np.request();
     py::buffer_info cost_buf       = cost_np.request();
+    py::buffer_info phi_buf        = phi_np.request();
     py::buffer_info S_ind_buf      = S_ind_np.request();
     py::buffer_info edge2target_buf= edge2target_np.request();
     py::buffer_info node2edge_buf  = node2edge_np.request();
 
     double *out        = static_cast<double *>(out_buf.ptr);
     double *cost       = static_cast<double *>(cost_buf.ptr);
+    double *phi        = static_cast<double *>(phi_buf.ptr);
     int    *S_ind      = static_cast<int *>(S_ind_buf.ptr);
     int    *edge2target= static_cast<int *>(edge2target_buf.ptr);
     int    *node2edge  = static_cast<int *>(node2edge_buf.ptr);
     
+    int n = phi_buf.shape[0];
     int N = cost_buf.shape[0];
 
     int edge_start = node2edge[node_ind];
@@ -298,7 +332,7 @@ void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, p
         int target2 = edge2target[ind2];
         for(int ind1=edge_start;ind1<edge_end;++ind1){
             int target1 = edge2target[ind1];
-            double val = compute_G(cost, S_ind, N, node_ind, target1, target2);
+            double val = compute_G(cost, phi, S_ind, dy, n,  N, node_ind, target1, target2);
             out[count] = val;
             count++;
         }
@@ -313,7 +347,7 @@ void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, p
  * G(indy)(indz) = C_{i_y, indz} + C_{i_z, indy} - C_{i_y, indy} - C_{i_z, indz}
  * i_y = S_ind(indy), i_z = S_ind(indz)
 */
-double compute_G_inv(double* cost, int* S_ind, const int N, const int indy, const int indz){
+double compute_G_inv(double *cost, int *S_ind, const int N, const int indy, const int indz){
     int i_y = S_ind[indy];
     int i_z = S_ind[indz];
     double val = cost[i_y*N+indz] + cost[i_z*N+indy] - cost[i_y*N+indy] - cost[i_z*N+indz];
