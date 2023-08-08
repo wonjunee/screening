@@ -284,17 +284,31 @@ double compute_G(double *cost, double *phi, int *S_ind, const double dy, const i
     // ------------------------------------------
 
     // computing S(y) using \nabla \phi
-    int i = y/n;
-    int j = y%n;
+    // note: the backward or forward finite difference does not work (error at the boundary)
+    //       Trying the centered difference instead.
+    int i,j,im,jm,ip,jp;
+
+    i = y/n;
+    j = y%n;
+
     double y1 = (j+0.5)*dy;
     double y2 = (i+0.5)*dy;
-    double S_y1 = (phi[y] - phi[i*n+int(fmax(0,j-1))])/dy;
-    double S_y2 = (phi[y] - phi[int(fmax(0,i-1))*n+j])/dy;
+
+    jm = int(fmax(0,j-1));
+    jp = int(fmin(n-1,j-1));
+    im = int(fmax(0,i-1));
+    ip = int(fmin(n-1,i-1));
+    double S_y1 = (phi[i*n+jp] - phi[i*n+jm])/(2*dy);
+    double S_y2 = (phi[ip*n+j] - phi[im*n+j])/(2*dy);
     
     i = ypp/n;
     j = ypp%n;
-    double S_ypp1  = (phi[ypp] - phi[i*n+int(fmax(0,j-1))])/dy;
-    double S_ypp2  = (phi[ypp] - phi[int(fmax(0,i-1))*n+j])/dy;
+    jm = int(fmax(0,j-1));
+    jp = int(fmin(n-1,j-1));
+    im = int(fmax(0,i-1));
+    ip = int(fmin(n-1,i-1));
+    double S_ypp1  = (phi[i*n+jp] - phi[i*n+jm])/(2*dy);
+    double S_ypp2  = (phi[ip*n+j] - phi[im*n+j])/(2*dy);
 
     i = yp/n;
     j = yp%n;
@@ -307,7 +321,6 @@ double compute_G(double *cost, double *phi, int *S_ind, const double dy, const i
  * Computing G(y) which is a |B_y|x|B_y| matrix where B_y is the set of edges coming from y.
 */
 void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, py::array_t<double>& phi_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, double dy, int node_ind){
-
     py::buffer_info out_buf        = out_np.request();
     py::buffer_info cost_buf       = cost_np.request();
     py::buffer_info phi_buf        = phi_np.request();
