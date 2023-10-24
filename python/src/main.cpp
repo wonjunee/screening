@@ -704,7 +704,84 @@ public:
 };
     
 
+void setup_indices(int& ip, int& im, int& jp, int& jm, int i, int j, int n){
+    ip = fmin(i+1,n-1);
+    im = fmax(i-1,0);
+    jp = fmin(j+1,n-1);
+    jm = fmax(j-1,0);
+}
+/**
+ * input f_np, a_np
+ * output f_np
+ * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
+ */
+void compute_first_variation_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_eps_np, py::array_t<double>& phi_np, py::array_t<double>& nu_np, py::array_t<double>& cost_np, py::array_t<double>& b_np, double dx, double dy, int yMax){
+    
+    py::buffer_info out_buf   = out_np.request();
+    py::buffer_info psi_eps_buf   = psi_eps_np.request();
+    py::buffer_info phi_buf  = phi_np.request();
+    py::buffer_info nu_buf  = nu_np.request();
+    py::buffer_info cost_buf = cost_np.request();
+    py::buffer_info b_buf    = b_np.request();
 
+    double *out   = static_cast<double *>(out_buf.ptr);
+    double *psi   = static_cast<double *>(psi_eps_buf.ptr);
+    double *phi   = static_cast<double *>(phi_buf.ptr);
+    double *nu    = static_cast<double *>(nu_buf.ptr);
+    double *cost  = static_cast<double *>(cost_buf.ptr);
+    double *b     = static_cast<double *>(b_buf.ptr);
+    
+    int n = phi_buf.shape[0];
+
+    int N = n*n;
+    
+    // I will just assume neumann although neumann is not really the correct thing to use
+    // compute the hessian of phi - b at each y
+    std::vector<double> phi_b_11(N);
+    std::vector<double> phi_b_12(N);
+    std::vector<double> phi_b_22(N);
+
+    std::vector<double> psi_hessian_11(N);
+    std::vector<double> psi_hessian_12(N);
+    std::vector<double> psi_hessian_22(N);
+
+    // compute \nabla^2 (\phi-b) and \nabla^2 \psi(\nabla \phi)
+    int ip,im,jp,jm;
+    for(int i=0;i<n;++i){
+        for(int j=0;j<n;++j){
+            int ind = i*n+j;
+            setup_indices(ip,im,jp,jm,i,j,n);
+            double x = (j+0.5)/n;
+            double y = (i+0.5)/n;
+            phi_b_11[ind] = ((phi[i*n+jp]-2*phi[i*n+j]+phi[i*n+jm]) - x)*(n*n);
+            phi_b_22[ind] = ((phi[ip*n+j]-2*phi[i*n+j]+phi[im*n+j]) - y)*(n*n);
+            phi_b_12[ind] = ((  phi[ip*n+jp]-phi[ip*n+jm]-phi[im*n+jp]+phi[im*n+jm]))/4 *(n*n);
+            
+            // find S_psi(y) = \nabla \phi(y)
+            double new_x = 0.5*n * (phi[i*n+jp]-phi[i*n+jm]);
+            double new_y = 0.5*n * (phi[ip*n+j]-phi[im*n+j]);
+            int new_j = new_x*n - 0.5;
+            int new_i = new_y*n - 0.5;
+            setup_indices(ip,im,jp,jm,new_i,new_j,n);
+            psi_hessian_11[ind] = ((psi[new_i*n+jp]-2*psi[new_i*n+new_j]+psi[new_i*n+jm]))*(n*n);
+            psi_hessian_22[ind] = ((psi[ip*n+new_j]-2*psi[new_i*n+new_j]+psi[im*n+new_j]))*(n*n);
+            psi_hessian_12[ind] = ((psi[ip*n+jp]-psi[ip*n+jm]-psi[im*n+jp]+psi[im*n+jm]))/4 *(n*n);
+            
+        }
+    }
+    // compute the first variation of J
+    for(int i=0;i<n;++i){
+        for(int j=0;j<n;++j){
+            int ind = i*n+j;
+            double val = 1
+                    + (- phi_b_11[ind]*psi_hessian_11[ind])
+                    + 2*(- phi_b_12[ind]*psi_hessian_12[ind])
+                    + (- phi_b_22[ind]*psi_hessian_22[ind]);
+            out[ind] = phi_b_11[ind];
+        }
+    }
+    
+}
 
 // --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -725,6 +802,8 @@ PYBIND11_MODULE(screening, m) {
 
     m.def("compute_Sy_cpp", &compute_Sy_cpp, "computing S(y) from for each y");
     m.def("compute_Gy_cpp", &compute_Gy_cpp, "Compute a matrix for G(y)");
+
+    m.def("compute_first_variation_cpp", &compute_first_variation_cpp, "compute the first variation of J");
 
     py::class_<HelperClass>(m, "HelperClass")
         .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
