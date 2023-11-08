@@ -213,19 +213,23 @@ void c_transform_epsilon_cpp(py::array_t<double>& out_np, py::array_t<double>& p
     int n1 = psi_buf.shape[0];
     int n2 = psi_buf.shape[1];
 
+    int m1 = phi_buf.shape[0];
+    int m2 = phi_buf.shape[1];
+
     int N = n1*n2;
+    int M = m1*m2;
     for(int i=0;i<N;++i){
         double val = 0;
-        for(int jb=0;jb<N;++jb){
-            val += exp( (psi[i] - phi[jb] - cost[i*N+jb]) / epsilon);
+        for(int jb=0;jb<M;++jb){
+            val += exp( (psi[i] - phi[jb] - cost[i*M+jb]) / epsilon);
         }
         out[i] = psi[i] - epsilon * log(val * dy * dy);
     }
 }
 
 
-double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int N, int i, int j){
-    return exp( (psi[i] - phi[j] - cost[i*N+j]) / epsilon);
+double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int N, int M, int i, int j){
+    return exp( (psi[i] - phi[j] - cost[i*M+j]) / epsilon);
 }
 
 /**
@@ -393,12 +397,16 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
     int n1 = psi_buf.shape[0];
     int n2 = psi_buf.shape[1];
 
+    int m1 = phi_buf.shape[0];
+    int m2 = phi_buf.shape[1];
+
     int N = n1*n2;
+    int M = m1*m2;
     // computing nu
-    for(int jb=0;jb<N;++jb){
+    for(int jb=0;jb<M;++jb){
         double val = 0;
         for(int i=0;i<N;++i){
-            val += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb);
+            val += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb);
         }
         nu[jb] = val * dx * dx;
     }
@@ -407,21 +415,21 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
     std::vector<double> Q(N);
     for(int i=0;i<N;++i){
         double val = 0;
-        for(int jb=0;jb<N;++jb){
-            val += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb) * (phi[jb] - b[jb]);
+        for(int jb=0;jb<M;++jb){
+            val += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb) * (phi[jb] - b[jb]);
         }
         Q[i] = val * dy * dy;
     }
 
     // computing rho
-    for(int jb=0;jb<N;++jb){
+    for(int jb=0;jb<M;++jb){
         double sum2 = 0;
         for(int i=0;i<N;++i){
-            sum2 += compute_pi_ij(psi, phi, cost, epsilon, N, i, jb) * Q[i];
+            sum2 += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb) * Q[i];
         }
         rho[jb] = (nu[jb] * (phi[jb] - b[jb]) - sum2*dx*dx)/epsilon;
     }
-    py::print("N:",N,"Hello, World!\n");
+    // py::print("N:",N,"Hello, World!\n");
 }
 
 
@@ -430,6 +438,8 @@ public:
 // variatbles
     int n1;
     int n2;
+    int m1;
+    int m2;
     double dx_;
     double dy_;
 
@@ -439,10 +449,13 @@ public:
 
     std::vector< std::vector<int> > stencils_;
 
-    HelperClass(py::array_t<double>& phi_np, const double dx, const double dy){
+    HelperClass(py::array_t<double>& psi_np, py::array_t<double>& phi_np, const double dx, const double dy){
+        py::buffer_info psi_buf = psi_np.request();
         py::buffer_info phi_buf = phi_np.request();
-        this->n1 = phi_buf.shape[0];
-        this->n2 = phi_buf.shape[1];
+        this->n1 = psi_buf.shape[0];
+        this->n2 = psi_buf.shape[1];
+        this->m1 = phi_buf.shape[0];
+        this->m2 = phi_buf.shape[1];
 
         this->dy_ = dy;
         this->dx_ = dx;
@@ -469,8 +482,8 @@ public:
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function(double x,double y, std::vector<double>& func) const{
-        double indj=fmin(n1-1,fmax(0,x/dy_-0.5));
-        double indi=fmin(n2-1,fmax(0,y/dy_-0.5));
+        double indj=fmin(n1-1,fmax(0,x/dx_-0.5));
+        double indi=fmin(n2-1,fmax(0,y/dx_-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
@@ -549,15 +562,19 @@ public:
         double *rhsx = static_cast<double *>(rhsx_buf.ptr);
         double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
+        int n1 = psi_buf.shape[0];
+        int n2 = psi_buf.shape[1];
+        int m1 = phi_buf.shape[0];
+        int m2 = phi_buf.shape[1];
 
         calculate_gradient_vxx(vxx_, psi, dx_);
         calculate_gradient_vyy(vyy_, psi, dx_);
         calculate_gradient_vxy(vxy_, psi, dx_);
 
         // step 1: for each point we will find T(x)
-        for(int i=0;i<n2;++i){
-            for(int j=0;j<n1;++j){
-                int ind = i*n1+j;
+        for(int i=0;i<m2;++i){
+            for(int j=0;j<m1;++j){
+                int ind = i*m1+j;
                 // int jp = static_cast<int>(fmin(n1-1,j+1));
                 // int ip = static_cast<int>(fmin(n2-1,i+1));
                 // double Sy1=(phi[i*n1+jp]-phi[ind])/dy_;
@@ -565,8 +582,8 @@ public:
 
                 int jm = static_cast<int>(fmax(0,j-1));
                 int im = static_cast<int>(fmax(0,i-1));
-                double Sy1=(phi[ind]-phi[i*n1+jm])/dy_;
-                double Sy2=(phi[ind]-phi[im*n1+j])/dy_;
+                double Sy1=(phi[ind]-phi[i*m1+jm])/dy_;
+                double Sy2=(phi[ind]-phi[im*m1+j])/dy_;
 
                 // auto save_st = stencils_[0];
                 // double val = INT_MIN;
