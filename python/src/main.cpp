@@ -575,33 +575,11 @@ public:
         for(int i=0;i<m2;++i){
             for(int j=0;j<m1;++j){
                 int ind = i*m1+j;
-                // int jp = static_cast<int>(fmin(n1-1,j+1));
-                // int ip = static_cast<int>(fmin(n2-1,i+1));
-                // double Sy1=(phi[i*n1+jp]-phi[ind])/dy_;
-                // double Sy2=(phi[ip*n1+j]-phi[ind])/dy_;
-
                 int jm = static_cast<int>(fmax(0,j-1));
                 int im = static_cast<int>(fmax(0,i-1));
                 double Sy1=(phi[ind]-phi[i*m1+jm])/dy_;
                 double Sy2=(phi[ind]-phi[im*m1+j])/dy_;
 
-                // auto save_st = stencils_[0];
-                // double val = INT_MIN;
-                // for(auto st : stencils_){
-                //     int jp = j + st[0];
-                //     int ip = i + st[1];
-                //     // check if interior
-                //     if(jp >= 0 && jp <= n1-1 && ip >= 0 && ip <= n2-1){
-                //         double new_val = (phi[ip*n1+jp] - phi[ind])/(dy_ * sqrt(st[0]*st[0] + st[1]*st[1]));
-                //         if(new_val > val){
-                //             val = new_val;
-                //             save_st = st;
-                //         }
-                //     }
-                // }
-                // double Sy1 = save_st[0] * fabs(val);
-                // double Sy2 = save_st[1] * fabs(val);
-                
                 double vxx_val = - interpolate_function(Sy1,Sy2,vxx_);
                 double vyy_val = - interpolate_function(Sy1,Sy2,vyy_);
                 double vxy_val = - interpolate_function(Sy1,Sy2,vxy_);
@@ -823,7 +801,7 @@ PYBIND11_MODULE(screening, m) {
     m.def("compute_first_variation_cpp", &compute_first_variation_cpp, "compute the first variation of J");
 
     py::class_<HelperClass>(m, "HelperClass")
-        .def(py::init<py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
+        .def(py::init<py::array_t<double> &, py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
         .def("compute_inverse_g", &HelperClass::compute_inverse_g)
         .def("compute_inverse_g2", &HelperClass::compute_inverse_g2);
 }
