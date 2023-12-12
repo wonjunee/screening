@@ -10,7 +10,7 @@ namespace py = pybind11;
  * input f_np, a_np
  * output f_np
  */
-void compute_dx(py::array_t<double>& out_np, py::array_t<double>& in_np, double dy){
+void compute_dx(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& in_np, double dy){
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info in_buf = in_np.request();
@@ -48,7 +48,7 @@ void compute_dx(py::array_t<double>& out_np, py::array_t<double>& in_np, double 
  * input f_np, a_np
  * output f_np
  */
-void compute_dy(py::array_t<double>& out_np, py::array_t<double>& in_np, double dy){
+void compute_dy(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& in_np, double dy){
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info in_buf = in_np.request();
@@ -84,7 +84,7 @@ void compute_dy(py::array_t<double>& out_np, py::array_t<double>& in_np, double 
  * input f_np, a_np
  * output f_np
  */
-void c_transform_cpp(py::array_t<double>& out_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np){
+void c_transform_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np){
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info phi_buf = phi_np.request();
@@ -113,26 +113,26 @@ void c_transform_cpp(py::array_t<double>& out_np, py::array_t<double>& phi_np, p
  * input f_np, a_np
  * output f_np
  */
-void c_transform_forward_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& cost_np){
+void c_transform_forward_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, 
+                             py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, 
+                             py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np){
    
-    py::buffer_info out_buf = out_np.request();
+    py::buffer_info phi_buf = phi_np.request();
     py::buffer_info psi_buf = psi_np.request();
     py::buffer_info cost_buf = cost_np.request();
-    double *out = static_cast<double *>(out_buf.ptr);
+    double *phi = static_cast<double *>(phi_buf.ptr);
     double *psi = static_cast<double *>(psi_buf.ptr);
     double *cost = static_cast<double *>(cost_buf.ptr);
 
-    int n1 = psi_buf.shape[0];
-    int n2 = psi_buf.shape[1];
-
-    int N = n1*n2;
+    int N = psi_buf.shape[0];
+    int M = phi_buf.shape[0];
     // c-transform: calculate psi^c(x) = max_x psi(x) - c(x,y) => psi^c_\jb = min_i \psi_i - c_{i, \jb}
-    for(int j=0;j<N;++j){
-        double val = psi[0] - cost[0*N+j];
+    for(int j=0;j<M;++j){
+        double val = psi[0] - cost[0*M+j];
         for(int i=1;i<N;++i){    
-            val = fmax(val, psi[i] - cost[i*N+j]);
+            val = fmax(val, psi[i] - cost[i*M+j]);
         }
-        out[j] = val;
+        phi[j] = val;
     }
 }
 
@@ -144,7 +144,7 @@ void c_transform_forward_cpp(py::array_t<double>& out_np, py::array_t<double>& p
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, double yMax){
+void approx_push_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, double epsilon, double dx, double dy, double yMax){
    
     py::buffer_info out_buf = out_np.request();
     py::buffer_info psi_buf = psi_np.request();
@@ -198,7 +198,7 @@ void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, p
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void c_transform_epsilon_cpp(py::array_t<double>& psi_eps_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, int yMax){
+void c_transform_epsilon_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& psi_eps_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, double epsilon, double dx, double dy, int yMax){
    
     py::buffer_info psi_eps_buf = psi_eps_np.request();
     py::buffer_info psi_buf = psi_np.request();
@@ -210,14 +210,9 @@ void c_transform_epsilon_cpp(py::array_t<double>& psi_eps_np, py::array_t<double
     double *cost = static_cast<double *>(cost_buf.ptr);
 
     
-    int n1 = psi_buf.shape[0];
-    int n2 = psi_buf.shape[1];
-
-    int m1 = phi_buf.shape[0];
-    int m2 = phi_buf.shape[1];
-
-    int N = n1*n2;
-    int M = m1*m2;
+    int N = psi_buf.shape[0];
+    int M = phi_buf.shape[0];
+    // py::print("N",N,"M",M);
     for(int i=0;i<N;++i){
         double val = 0;
         for(int jb=0;jb<M;++jb){
@@ -237,7 +232,7 @@ double compute_pi_ij(double *psi, double *phi, double *cost, double epsilon, int
  * phi(y) = \max_x \psi(x) - c(x,y) = \psi(S(y)) - c(S(y),y)
  * Computing S_ind:[0...n_Y-1] -> [0...n_X-1]
 */
-void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double>& psi_np, py::array_t<double>& cost_np){
+void compute_Sy_cpp(py::array_t<int>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np){
     py::buffer_info out_buf  = out_np.request();
     py::buffer_info psi_buf  = psi_np.request();
     py::buffer_info cost_buf = cost_np.request();
@@ -326,7 +321,7 @@ double compute_G(double *cost, double *phi, int *S_ind, const double dy, const i
 /**
  * Computing G(y) which is a |B_y|x|B_y| matrix where B_y is the set of edges coming from y.
 */
-void compute_Gy_cpp(py::array_t<double>& out_np, py::array_t<double>& cost_np, py::array_t<double>& phi_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, double dy, int node_ind){
+void compute_Gy_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<int>& S_ind_np, py::array_t<int>& edge2target_np, py::array_t<int>& node2edge_np, double dy, int node_ind){
     py::buffer_info out_buf        = out_np.request();
     py::buffer_info cost_buf       = cost_np.request();
     py::buffer_info phi_buf        = phi_np.request();
@@ -380,7 +375,7 @@ double compute_G_inv(double *cost, int *S_ind, const int N, const int indy, cons
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, py::array_t<double>& b_np, double epsilon, double dx, double dy, int yMax){
+void compute_nu_and_rho_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& nu_np, py::array_t<double, py::array::c_style | py::array::forcecast>& rho_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, py::array_t<double, py::array::c_style | py::array::forcecast>& b_np, double epsilon, double dx, double dy, int yMax){
    
     py::buffer_info nu_buf   = nu_np.request();
     py::buffer_info rho_buf  = rho_np.request();
@@ -396,14 +391,8 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
     double *cost = static_cast<double *>(cost_buf.ptr);
     double *b    = static_cast<double *>(b_buf.ptr);
     
-    int n1 = psi_buf.shape[0];
-    int n2 = psi_buf.shape[1];
-
-    int m1 = phi_buf.shape[0];
-    int m2 = phi_buf.shape[1];
-
-    int N = n1*n2;
-    int M = m1*m2;
+    int N = psi_buf.shape[0];
+    int M = phi_buf.shape[0];
 
     std::vector<double> plan(N*M);
 
@@ -453,6 +442,63 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
 }
 
 
+
+/**
+ * input f_np, a_np
+ * output f_np
+ * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
+ */
+void compute_xi_cpp(
+    py::array_t<double, py::array::c_style | py::array::forcecast>& nu_np, 
+    py::array_t<double, py::array::c_style | py::array::forcecast>& rho_np,
+    py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, 
+    py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, 
+    py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, 
+    py::array_t<double, py::array::c_style | py::array::forcecast>& b_np, 
+    py::array_t<double, py::array::c_style | py::array::forcecast>& plan_np, 
+    double epsilon, double dx, double dy, int yMax){
+   
+    py::buffer_info nu_buf   = nu_np.request();
+    py::buffer_info rho_buf  = rho_np.request();
+    py::buffer_info psi_buf  = psi_np.request();
+    py::buffer_info phi_buf  = phi_np.request();
+    py::buffer_info cost_buf = cost_np.request();
+    py::buffer_info b_buf    = b_np.request();
+    py::buffer_info plan_buf    = plan_np.request();
+
+    double *nu   = static_cast<double *>(nu_buf.ptr);
+    double *rho  = static_cast<double *>(rho_buf.ptr);
+    double *psi  = static_cast<double *>(psi_buf.ptr);
+    double *phi  = static_cast<double *>(phi_buf.ptr);
+    double *cost = static_cast<double *>(cost_buf.ptr);
+    double *b    = static_cast<double *>(b_buf.ptr);
+    double *plan    = static_cast<double *>(plan_buf.ptr);
+    
+    int N = psi_buf.shape[0];
+    int M = phi_buf.shape[0];
+
+    // defining Q_i := \sum_k (\phi-b)^k \pi^{ik} dy^2
+    std::vector<double> Q(N);
+    for(int i=0;i<N;++i){
+        double val = 0;
+        for(int jb=0;jb<M;++jb){
+            val += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb) * (phi[jb] - b[jb]);
+        }
+        Q[i] = val * dy * dy;
+    }
+
+    // computing rho
+    for(int jb=0;jb<M;++jb){
+        double sum2 = 0;
+        for(int i=0;i<N;++i){
+            sum2 += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb) * Q[i];
+        }
+        // rho[jb] = (nu[jb] * (phi[jb] - b[jb]) - sum2*dx*dx)/epsilon;
+        rho[jb] = sum2*dx*dx/epsilon;
+    }
+    // py::print("N:",N,"Hello, World!\n");
+}
+
 class HelperClass{
 public:
 // variatbles
@@ -469,7 +515,7 @@ public:
 
     std::vector< std::vector<int> > stencils_;
 
-    HelperClass(py::array_t<double>& psi_np, py::array_t<double>& phi_np, const double dx, const double dy){
+    HelperClass(py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, const double dx, const double dy){
         py::buffer_info psi_buf = psi_np.request();
         py::buffer_info phi_buf = phi_np.request();
         this->n1 = psi_buf.shape[0];
@@ -568,7 +614,7 @@ public:
      *  5. np rhsx_np
      *  6. np rhsy_np 
      */
-    void compute_inverse_g(py::array_t<double>& outputx_np, py::array_t<double>& outputy_np, py::array_t<double>& phi_np, py::array_t<double>& psi_np, py::array_t<double>& rhsx_np, py::array_t<double>& rhsy_np){
+    void compute_inverse_g(py::array_t<double, py::array::c_style | py::array::forcecast>& outputx_np, py::array_t<double, py::array::c_style | py::array::forcecast>& outputy_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& rhsx_np, py::array_t<double, py::array::c_style | py::array::forcecast>& rhsy_np){
         py::buffer_info outputx_buf = outputx_np.request();
         py::buffer_info outputy_buf = outputy_np.request();
         py::buffer_info phi_buf = phi_np.request();
@@ -624,7 +670,7 @@ public:
      *  5. np rhsx_np
      *  6. np rhsy_np 
      */
-    void compute_inverse_g2(py::array_t<double>& outputx_np, py::array_t<double>& outputy_np, py::array_t<double>& phi_np, py::array_t<double>& psi_np, py::array_t<double>& rhs_np){
+    void compute_inverse_g2(py::array_t<double, py::array::c_style | py::array::forcecast>& outputx_np, py::array_t<double, py::array::c_style | py::array::forcecast>& outputy_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& rhs_np){
         py::buffer_info outputx_buf = outputx_np.request();
         py::buffer_info outputy_buf = outputy_np.request();
         py::buffer_info phi_buf = phi_np.request();
@@ -730,7 +776,7 @@ void setup_indices(int& ip, int& im, int& jp, int& jm, int i, int j, int n){
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void compute_first_variation_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_eps_np, py::array_t<double>& phi_np, py::array_t<double>& nu_np, py::array_t<double>& cost_np, py::array_t<double>& b_np, double dx, double dy, int yMax){
+void compute_first_variation_cpp(py::array_t<double, py::array::c_style | py::array::forcecast>& out_np, py::array_t<double, py::array::c_style | py::array::forcecast>& psi_eps_np, py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, py::array_t<double, py::array::c_style | py::array::forcecast>& nu_np, py::array_t<double, py::array::c_style | py::array::forcecast>& cost_np, py::array_t<double, py::array::c_style | py::array::forcecast>& b_np, double dx, double dy, int yMax){
     
     py::buffer_info out_buf   = out_np.request();
     py::buffer_info psi_eps_buf   = psi_eps_np.request();
@@ -821,7 +867,7 @@ PYBIND11_MODULE(screening, m) {
     m.def("compute_first_variation_cpp", &compute_first_variation_cpp, "compute the first variation of J");
 
     py::class_<HelperClass>(m, "HelperClass")
-        .def(py::init<py::array_t<double> &, py::array_t<double> &, double, double>()) // py::array_t<double>& phi_np, const double dx, const double dy
+        .def(py::init<py::array_t<double, py::array::c_style | py::array::forcecast> &, py::array_t<double, py::array::c_style | py::array::forcecast> &, double, double>()) // py::array_t<double, py::array::c_style | py::array::forcecast>& phi_np, const double dx, const double dy
         .def("compute_inverse_g", &HelperClass::compute_inverse_g)
         .def("compute_inverse_g2", &HelperClass::compute_inverse_g2);
 }
