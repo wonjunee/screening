@@ -198,13 +198,13 @@ void approx_push_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, p
  * output f_np
  * (nu: torch.tensor, psi: torch.tensor, phi: torch.tensor, cost: torch.tensor, epsilon: float, dx: float, dy: float)
  */
-void c_transform_epsilon_cpp(py::array_t<double>& out_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, int yMax){
+void c_transform_epsilon_cpp(py::array_t<double>& psi_eps_np, py::array_t<double>& psi_np, py::array_t<double>& phi_np, py::array_t<double>& cost_np, double epsilon, double dx, double dy, int yMax){
    
-    py::buffer_info out_buf = out_np.request();
+    py::buffer_info psi_eps_buf = psi_eps_np.request();
     py::buffer_info psi_buf = psi_np.request();
     py::buffer_info phi_buf = phi_np.request();
     py::buffer_info cost_buf = cost_np.request();
-    double *out = static_cast<double *>(out_buf.ptr);
+    double *psi_eps = static_cast<double *>(psi_eps_buf.ptr);
     double *psi = static_cast<double *>(psi_buf.ptr);
     double *phi = static_cast<double *>(phi_buf.ptr);
     double *cost = static_cast<double *>(cost_buf.ptr);
@@ -221,9 +221,9 @@ void c_transform_epsilon_cpp(py::array_t<double>& out_np, py::array_t<double>& p
     for(int i=0;i<N;++i){
         double val = 0;
         for(int jb=0;jb<M;++jb){
-            val += exp( (psi[i] - phi[jb] - cost[i*M+jb]) / epsilon);
+            val += exp( (- phi[jb] - cost[i*M+jb]) / epsilon);
         }
-        out[i] = psi[i] - epsilon * log(val * dy * dy);
+        psi_eps[i] = - epsilon * log(val * dy * dy);
     }
 }
 
@@ -273,7 +273,9 @@ double compute_cost(const double x1,const double x2,const double y1,const double
     return - x1*y1 - x2*y2;
 }
     
-    
+
+
+
 /**
  * a = (y,y') b = (y,y'')
  * $G(y)(a,b)= c(S(y),y')+c(S(y''),y)-c(S(y),y)-c(S(y''),y')$
@@ -402,6 +404,23 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
 
     int N = n1*n2;
     int M = m1*m2;
+
+    std::vector<double> plan(N*M);
+
+    for(int i=0;i<N;++i){
+        for(int j=0;j<M;++j){
+            plan[i*M+j] = exp( (psi[i] - phi[j] - cost[i*M+j]) / epsilon);
+        }
+    }
+    // normalize plan
+    double val = 0;
+    for(int i=0;i<N*M;++i){
+        val += plan[i];
+    }
+    for(int i=0;i<N*M;++i){
+        plan[i] /= val;
+    }
+
     // computing nu
     for(int jb=0;jb<M;++jb){
         double val = 0;
@@ -427,7 +446,8 @@ void compute_nu_and_rho_cpp(py::array_t<double>& nu_np, py::array_t<double>& rho
         for(int i=0;i<N;++i){
             sum2 += compute_pi_ij(psi, phi, cost, epsilon, N, M, i, jb) * Q[i];
         }
-        rho[jb] = (nu[jb] * (phi[jb] - b[jb]) - sum2*dx*dx)/epsilon;
+        // rho[jb] = (nu[jb] * (phi[jb] - b[jb]) - sum2*dx*dx)/epsilon;
+        rho[jb] = sum2*dx*dx/epsilon;
     }
     // py::print("N:",N,"Hello, World!\n");
 }
