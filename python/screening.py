@@ -4,13 +4,10 @@ import os
 os.system('bash compile.sh')
 
 # %%
-import argparse
 import os
 import numpy as np
 from scipy.fftpack import dctn, idctn
-import math
-import sys
-import copy
+import tqdm
 import matplotlib.pyplot as plt
 from screening import HelperClass
 
@@ -27,8 +24,9 @@ import torch.autograd as autograd
 import torch
 
 cuda = True if torch.cuda.is_available() else False
-image_folder = "images-other"
+image_folder = "images-othe2"
 os.makedirs(image_folder, exist_ok=True)
+desc = "using identity"
 
 # %%
 # Initialize Fourier kernel
@@ -204,7 +202,7 @@ def compute_rhs(phi_np, psi_np, nu_np, b, helper, dx, dy, n, m, show_image=False
   R1x = np.zeros((m,m))
   R2y = np.zeros((m,m))
 
-  helper.compute_inverse_g(R1, R2, phi_b, psi_np, fx, fy)
+  helper.compute_inverse_g(R1, R2, phi_np, psi_np, fx, fy)
 
   R1 *= nu_np.reshape((m,m))
   R2 *= nu_np.reshape((m,m))
@@ -218,25 +216,22 @@ def compute_rhs(phi_np, psi_np, nu_np, b, helper, dx, dy, n, m, show_image=False
   gy0 = R2[0,:]
   gy1 = R2[-1,:]
 
-  return nu_np.reshape((m,m)) + R1x + R2y, [gx0,gx1,gy0,gy1]
+  return nu_np.reshape((m,m)) + R1x + R2y, [-gx0,-gx1,-gy0,-gy1]
 
 
-def solve_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image=False):
+def solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image=False):
   rhs, bdry = compute_rhs(phi_np, psi_np, nu_np, b, helper, dx, dy, n, m, show_image=show_image) # computing the right hand side
   solve_poisson_bdry(u,rhs,bdry,kernel)
   return rhs
 
 # %%
-
-from IPython import display
-
 # parameters
 # grid size n x n
 n = 40
 m = 60
 
 # step size for the gradient ascent
-L = 5000
+sigma = 1e-5
 
 # epsilon for pushforward
 eps = 1e-2
@@ -269,6 +264,7 @@ phi_checking = np.zeros((m*m))
 c_transform_forward_cpp(phi_checking, psi_np, cost)
 plt.imshow(phi_checking.reshape((m,m)),origin='lower')
 plt.savefig("sanity_check_c_transform.png")
+plt.close('all')
 
 phi_np = np.zeros((m*m)).astype('float64')
 nu_np  = np.zeros((m*m)).astype('float64')
@@ -279,7 +275,7 @@ plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
 plan /= plan.sum() * dx * dx * dy * dy
 nu_np[:] = plan.sum(axis=0) * dx*dx
 
-plt.contour(Yx,Yy,nu_np.reshape((m,m)), 60, origin='lower')
+plt.contour(Yx,Yy,nu_np.reshape((m,m)), 120, origin='lower')
 plt.title(f"sum: {np.sum(nu_np) * dy * dy}")
 plt.savefig("sanity_check_push_forward.png")
 plt.close('all')
@@ -289,15 +285,13 @@ helper = HelperClass(psi_np, phi_np, dx, dy, n, m)
 u = np.zeros((m,m)).astype('float64')
 
 # %%
-import tqdm
+
 # phi_np = np.load('phi.npy')
 # phi_np = cv2.resize(phi_np, dsize=(n, n), interpolation=cv2.INTER_CUBIC)
 # rhs = np.zeros((n,n))
 
-# phi_np = 
-
 # fig,ax = plt.subplots(1,4,figsize=(14,4))
-pbar = tqdm.tqdm(range(100000))
+pbar = tqdm.tqdm(range(1000000))
 
 J_list = []
 eps= 1e-2
@@ -319,9 +313,9 @@ for it in pbar:
   plan /= plan.sum() * dx * dx * dy * dy
   nu_np[:] = plan.sum(axis=0) * dx*dx
 
-  rhs = solve_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
-  error = np.mean(u**2)/L**2
-  phi_np += 1.0/L * rhs.flatten()
+  rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
+  error = np.mean(u**2)
+  phi_np += sigma * rhs.flatten()
   phi_np[0] = 0
 
   # find the value of J
@@ -334,7 +328,8 @@ for it in pbar:
 
   Tx = -Tx; Ty = -Ty
 
-  if it % 100 == 0:
+  skip = 100
+  if it % skip == 0:
     np.save( "phi.npy", phi_np)
     # approx_push(nu_np, psi_np, phi_np, cost, 1e-3, dx, dy)
     plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
@@ -356,11 +351,16 @@ for it in pbar:
     ax[5].scatter(Tx,Ty,marker='.',alpha=0.4)
     ax[5].set_aspect('equal')
     ax[5].set_title('Tx')
-    plt.suptitle(f"it={it} error={error:0.2e}")
-    filename = f"{image_folder}/{it//100:03d}.png"
+    plt.suptitle(f"it={it} error={error:0.2e}\n{desc}")
+    filename = f"{image_folder}/{it//skip:03d}.png"
     plt.savefig(filename)
     plt.close('all')
     pbar.set_description(filename)
+
+    fig,ax = plt.subplots(1,1)
+    ax.text(0,0,f'sigma: {sigma:0.2e}\n{filename}\n{desc}')
+    plt.savefig(f"{image_folder}/status.png")
+    plt.close('all')
 
 # %%
 # !rm images/*

@@ -484,14 +484,14 @@ public:
     }
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
-    double interpolate_function(double x,double y, double dx, int n, std::vector<double>& func) const{
-        double indj=fmin(n_-1,fmax(0,x/dx-0.5));
-        double indi=fmin(n_-1,fmax(0,y/dx-0.5));
+    double interpolate_function_Y(double x,double y, double dx, int n, std::vector<double>& func) const{
+        double indj=fmin(n-1,fmax(0,x/dx-0.5));
+        double indi=fmin(n-1,fmax(0,y/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
 
-        double x00 = func[(int)fmin(n_-1,fmax(0,indi))*n+(int)fmin(n-1,fmax(0,indj))];
+        double x00 = func[(int)fmin(n-1,fmax(0,indi))*n+(int)fmin(n-1,fmax(0,indj))];
         double x01 = func[(int)fmin(n-1,fmax(0,indi))*n+(int)fmin(n-1,fmax(0,indj+1))];
         double x10 = func[(int)fmin(n-1,fmax(0,indi+1))*n+(int)fmin(n-1,fmax(0,indj))];
         double x11 = func[(int)fmin(n-1,fmax(0,indi+1))*n+(int)fmin(n-1,fmax(0,indj+1))];
@@ -502,38 +502,57 @@ public:
         return interpolated_value;  
     }
 
-    void calculate_gradient_vxx(std::vector<double>& vxx, const double *phi, const double dx){
-        for(int i=0;i<n_;++i){
-            for(int j=0;j<n_;++j){
-                // int jpp = fmin(n_-1,j+2);
-                int jp  = fmin(n_-1,j+1);
+    // This function will provide S1(x,) where x and y are n [0,1] double values
+    double interpolate_function_X(double x,double y, double dx, int n, std::vector<double>& func) const{
+        double indj=fmin(n-1,fmax(0,(x-1.0)/dx-0.5));
+        double indi=fmin(n-1,fmax(0,(y-1.0)/dx-0.5));
+
+        double lambda1=indj-(int)indj;
+        double lambda2=indi-(int)indi;
+
+        double x00 = func[(int)fmin(n-1,fmax(0,indi))*n+(int)fmin(n-1,fmax(0,indj))];
+        double x01 = func[(int)fmin(n-1,fmax(0,indi))*n+(int)fmin(n-1,fmax(0,indj+1))];
+        double x10 = func[(int)fmin(n-1,fmax(0,indi+1))*n+(int)fmin(n-1,fmax(0,indj))];
+        double x11 = func[(int)fmin(n-1,fmax(0,indi+1))*n+(int)fmin(n-1,fmax(0,indj+1))];
+
+        double interpolated_value = (1-lambda1)*(1-lambda2)*x00+(lambda1)*(1-lambda2)*x01
+                                   +(1-lambda1)*(lambda2)*x10+(lambda1)*(lambda2)*x11;
+
+        return interpolated_value;  
+    }
+
+    void calculate_gradient_vxx(std::vector<double>& vxx, const double *psi, const double dx, const int n){
+        for(int i=0;i<n;++i){
+            for(int j=0;j<n;++j){
+                // int jpp = fmin(n-1,j+2);
+                int jp  = fmin(n-1,j+1);
                 int jm  = fmax(0,j-1);
                 // int jmm = fmax(0,j-2);
-                vxx[i*n_+j] = 1.0 * (phi[i*n_+jp] - phi[i*n_+j] - phi[i*n_+j] + phi[i*n_+jm])/(dx*dx);
+                vxx[i*n+j] = 1.0 * (psi[i*n+jp] - psi[i*n+j] - psi[i*n+j] + psi[i*n+jm])/(dx*dx);
             }
         }
     }
 
-    void calculate_gradient_vyy(std::vector<double>& vyy, const double *phi, const double dx){
-        for(int i=0;i<n_;++i){
-            for(int j=0;j<n_;++j){
-                // int ipp = fmin(n_-1,i+2);
-                int ip  = fmin(n_-1,i+1);
+    void calculate_gradient_vyy(std::vector<double>& vyy, const double *psi, const double dx, const int n){
+        for(int i=0;i<n;++i){
+            for(int j=0;j<n;++j){
+                // int ipp = fmin(n-1,i+2);
+                int ip  = fmin(n-1,i+1);
                 int im  = fmax(0,i-1);
                 // int imm  = fmax(0,i-2);
-                vyy[i*n_+j] = 1.0 * (phi[ip*n_+j] - phi[i*n_+j] - phi[i*n_+j] + phi[im*n_+j])/(dx*dx);
+                vyy[i*n+j] = 1.0 * (psi[ip*n+j] - psi[i*n+j] - psi[i*n+j] + psi[im*n+j])/(dx*dx);
             }
         }
     }
 
-    void calculate_gradient_vxy(std::vector<double>& vxy, const double *phi, const double dx){
-        for(int i=0;i<n_;++i){
-            for(int j=0;j<n_;++j){
-                int ip  = fmin(n_-1,i+1);
+    void calculate_gradient_vxy(std::vector<double>& vxy, const double *psi, const double dx, const int n){
+        for(int i=0;i<n;++i){
+            for(int j=0;j<n;++j){
+                int ip  = fmin(n-1,i+1);
                 int im  = fmax(0,i-1);
-                int jp  = fmin(n_-1,j+1);
+                int jp  = fmin(n-1,j+1);
                 int jm  = fmax(0,j-1);
-                vxy[i*n_+j] = 0.25 * (phi[ip*n_+jp] - phi[ip*n_+jm] - phi[im*n_+jp] +phi[im*n_+jm])/(dx*dx);
+                vxy[i*n+j] = 0.25 * (psi[ip*n+jp] - psi[ip*n+jm] - psi[im*n+jp] +psi[im*n+jm])/(dx*dx);
             }
         }
     }
@@ -572,9 +591,9 @@ public:
         double *rhsx = static_cast<double *>(rhsx_buf.ptr);
         double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
-        calculate_gradient_vxx(vxx_, psi, dx_);
-        calculate_gradient_vyy(vyy_, psi, dx_);
-        calculate_gradient_vxy(vxy_, psi, dx_);
+        calculate_gradient_vxx(vxx_, psi, dx_, n_);
+        calculate_gradient_vyy(vyy_, psi, dx_, n_);
+        calculate_gradient_vxy(vxy_, psi, dx_, n_);
 
         // step 1: for each point we will find T(x)
         for(int i=0;i<m_;++i){
@@ -587,9 +606,12 @@ public:
                 double Sy1=(phi[i*m_+jp]-phi[i*m_+jm])/(2.0*dy_);
                 double Sy2=(phi[ip*m_+j]-phi[im*m_+j])/(2.0*dy_);
 
-                double vxx_val = - interpolate_function(Sy1,Sy2,dx_,n_,vxx_);
-                double vyy_val = - interpolate_function(Sy1,Sy2,dx_,n_,vyy_);
-                double vxy_val = - interpolate_function(Sy1,Sy2,dx_,n_,vxy_);
+                double vxx_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxx_);
+                double vyy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vyy_);
+                double vxy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxy_);
+
+                // outputx[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
+                // outputy[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
 
                 outputx[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
                 outputy[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
