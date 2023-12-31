@@ -24,9 +24,9 @@ import torch.autograd as autograd
 import torch
 
 cuda = True if torch.cuda.is_available() else False
-image_folder = "images-othe2"
+image_folder = "images-other4"
 os.makedirs(image_folder, exist_ok=True)
-desc = "using identity"
+desc = "using anti identity"
 
 # %%
 # Initialize Fourier kernel
@@ -65,7 +65,7 @@ def solve_poisson_bdry(u, f, bdry, kernel):
     workspace[n-1,:] += gy1 * n
     workspace[:,0]   -= gx0 * n
     workspace[:,n-1] += gx1 * n
-    workspace = dct2(workspace) / kernel
+    workspace = dct2(workspace) / (1+kernel)
     workspace[0,0] = 0
     u += idct2(workspace)
 
@@ -286,9 +286,7 @@ u = np.zeros((m,m)).astype('float64')
 
 # %%
 
-# phi_np = np.load('phi.npy')
-# phi_np = cv2.resize(phi_np, dsize=(n, n), interpolation=cv2.INTER_CUBIC)
-# rhs = np.zeros((n,n))
+phi_np = np.load(f'{image_folder}/phi.npy')
 
 # fig,ax = plt.subplots(1,4,figsize=(14,4))
 pbar = tqdm.tqdm(range(1000000))
@@ -315,7 +313,7 @@ for it in pbar:
 
   rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
   error = np.mean(u**2)
-  phi_np += sigma * rhs.flatten()
+  phi_np += sigma * u.flatten()
   phi_np[0] = 0
 
   # find the value of J
@@ -330,18 +328,18 @@ for it in pbar:
 
   skip = 100
   if it % skip == 0:
-    np.save( "phi.npy", phi_np)
+    np.save( f"{image_folder}/phi.npy", phi_np)
     # approx_push(nu_np, psi_np, phi_np, cost, 1e-3, dx, dy)
     plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
     plan /= plan.sum() * dx * dx * dy * dy
     nu_np[:] = plan.sum(axis=0) * dx*dx
     fig,ax = plt.subplots(1,6,figsize=(18,4),constrained_layout=True)
-    ax[0].imshow(nu_np.reshape((m,m)),origin='lower')
+    ax[0].contourf(Yx,Yy,np.log(1+np.log(1+nu_np)).reshape((m,m)),60)
     ax[0].set_title("nu")
-    ax[1].contourf(phi_np.reshape((m,m)),origin='lower')
+    ax[1].contourf(Yx,Yy,phi_np.reshape((m,m)))
     ax[1].set_aspect('equal')
     ax[1].set_title("phi")
-    ax[2].contourf(psi_np.reshape((n,n)),origin='lower')
+    ax[2].contourf(Xx,Xy,psi_np.reshape((n,n)))
     ax[2].set_aspect('equal')
     ax[2].set_title("psi")
     ax[3].imshow(u,origin='lower')
@@ -351,16 +349,12 @@ for it in pbar:
     ax[5].scatter(Tx,Ty,marker='.',alpha=0.4)
     ax[5].set_aspect('equal')
     ax[5].set_title('Tx')
-    plt.suptitle(f"it={it} error={error:0.2e}\n{desc}")
+    plt.suptitle(f"it={it} error={error:0.2e}\nsigma: {sigma:0.2e}\n{desc}")
     filename = f"{image_folder}/{it//skip:03d}.png"
     plt.savefig(filename)
+    plt.savefig(f"{image_folder}/000-status.png")
     plt.close('all')
     pbar.set_description(filename)
-
-    fig,ax = plt.subplots(1,1)
-    ax.text(0,0,f'sigma: {sigma:0.2e}\n{filename}\n{desc}')
-    plt.savefig(f"{image_folder}/status.png")
-    plt.close('all')
 
 # %%
 # !rm images/*
