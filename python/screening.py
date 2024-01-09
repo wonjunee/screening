@@ -231,7 +231,7 @@ n = 40
 m = 60
 
 # step size for the gradient ascent
-sigma = 1e-5
+sigma = 1e-6
 
 # epsilon for pushforward
 eps = 1e-2
@@ -292,7 +292,6 @@ u = np.zeros((m,m)).astype('float64')
 pbar = tqdm.tqdm(range(1000000))
 
 J_list = []
-eps= 1e-2
 
 Tx = np.zeros((n,n))
 Ty = np.zeros((n,n))
@@ -313,7 +312,7 @@ for it in pbar:
 
   rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
   error = np.mean(u**2)
-  phi_np += sigma * u.flatten()
+  phi_np += sigma * rhs.flatten()
   phi_np[0] = 0
 
   # find the value of J
@@ -355,9 +354,3 @@ for it in pbar:
     plt.savefig(f"{image_folder}/000-status.png")
     plt.close('all')
     pbar.set_description(filename)
-
-# %%
-# !rm images/*
-
-
-
