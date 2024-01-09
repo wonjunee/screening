@@ -232,15 +232,17 @@ m = 60
 
 # step size for the gradient ascent
 sigma = 1e-6
+max_iteration = 100000
 
 # epsilon for pushforward
 eps = 1e-2
-max_iteration = 100000
-Xx,Xy =np.meshgrid(np.linspace(1+0.5/n,2-0.5/n,n), np.linspace(1+0.5/n,2-0.5/n,n))
+xMax = 2.5
 yMax = 2.5
+# Xx,Xy =np.meshgrid(np.linspace(1+0.5/n,2-0.5/n,n), np.linspace(1+0.5/n,2-0.5/n,n))
+Xx,Xy =np.meshgrid(np.linspace(xMax*0.5/n,xMax*(1-0.5/n),n), np.linspace(xMax*0.5/n,xMax*(1-0.5/n),n))
 Yx,Yy =np.meshgrid(np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m), np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m))
 
-dx = 1.0/n
+dx = 1.0/n * xMax
 dy = 1.0/m * yMax
 
 kernel = initialize_kernel(m, m, dy)
@@ -248,6 +250,9 @@ kernel = initialize_kernel(m, m, dy)
 Xv = np.zeros((n*n,2))
 Xv[:,0] = Xx.reshape((n*n,))
 Xv[:,1] = Xy.reshape((n*n,))
+
+mu = np.zeros((n,n)).astype('float64')
+mu[(Xx>=1) & (Xx<=2) & (Xy>=1) & (Xy<=2)] = 1
 
 Yv = np.zeros((m*m,2))
 Yv[:,0] = Yx.reshape((m*m,))
@@ -272,11 +277,15 @@ nu_np  = np.zeros((m*m)).astype('float64')
 c_transform_forward(phi_np, psi_np, cost)
 
 plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
+plan *= mu.reshape((n*n,1))
 plan /= plan.sum() * dx * dx * dy * dy
 nu_np[:] = plan.sum(axis=0) * dx*dx
 
-plt.contour(Yx,Yy,nu_np.reshape((m,m)), 120, origin='lower')
-plt.title(f"sum: {np.sum(nu_np) * dy * dy}")
+fig, ax = plt.subplots(1,2)
+ax[0].contour(Xx,Xy,mu, 60)
+ax[0].set_title(f"sum: {np.sum(mu) * dx * dx}")
+ax[1].contour(Yx,Yy,nu_np.reshape((m,m)), 60)
+ax[1].set_title(f"sum: {np.sum(nu_np) * dy * dy}")
 plt.savefig("sanity_check_push_forward.png")
 plt.close('all')
 
@@ -308,7 +317,7 @@ for it in pbar:
   # pushforward mu -> nu
   plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
   plan /= plan.sum() * dx * dx * dy * dy
-  nu_np[:] = plan.sum(axis=0) * dx*dx
+  nu_np[:] = (plan * mu.reshape((n*n,1))).sum(axis=0) * dx*dx
 
   rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
   error = np.mean(u**2)
