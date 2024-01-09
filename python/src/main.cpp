@@ -612,12 +612,9 @@ public:
                 double vxx_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxx_);
                 double vyy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vyy_);
                 double vxy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxy_);
-
-                outputx[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
-                outputy[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
-
-                // outputx[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
-                // outputy[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
+                
+                outputx[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
+                outputy[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
             }
         }
     }

@@ -231,7 +231,7 @@ n = 40
 m = 60
 
 # step size for the gradient ascent
-sigma = 1e-6
+sigma = 1e-7
 max_iteration = 100000
 
 # epsilon for pushforward
@@ -316,8 +316,9 @@ for it in pbar:
 
   # pushforward mu -> nu
   plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
+  plan *= mu.reshape((n*n,1))
   plan /= plan.sum() * dx * dx * dy * dy
-  nu_np[:] = (plan * mu.reshape((n*n,1))).sum(axis=0) * dx*dx
+  nu_np[:] = plan.sum(axis=0) * dx*dx
 
   rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, yMax, n, m, show_image = (it%10==0))
   error = np.mean(u**2)
@@ -337,10 +338,6 @@ for it in pbar:
   skip = 100
   if it % skip == 0:
     np.save( f"{image_folder}/phi.npy", phi_np)
-    # approx_push(nu_np, psi_np, phi_np, cost, 1e-3, dx, dy)
-    plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
-    plan /= plan.sum() * dx * dx * dy * dy
-    nu_np[:] = plan.sum(axis=0) * dx*dx
     fig,ax = plt.subplots(1,6,figsize=(18,4),constrained_layout=True)
     ax[0].contourf(Yx,Yy,np.log(1+np.log(1+nu_np)).reshape((m,m)),60)
     ax[0].set_title("nu")
