@@ -504,8 +504,8 @@ public:
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function_X(double x,double y, double dx, int n, std::vector<double>& func) const{
-        double indj=fmin(n-1,fmax(0,(x-1.0)/dx-0.5));
-        double indi=fmin(n-1,fmax(0,(y-1.0)/dx-0.5));
+        double indj=fmin(n-1,fmax(0,x/dx-0.5));
+        double indi=fmin(n-1,fmax(0,y/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
