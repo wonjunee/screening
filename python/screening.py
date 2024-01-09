@@ -236,13 +236,12 @@ sigma = 1e-5
 # epsilon for pushforward
 eps = 1e-2
 max_iteration = 100000
-# Xx,Xy =np.meshgrid(np.linspace(1+0.5/n,2-0.5/n,n), np.linspace(1+0.5/n,2-0.5/n,n))
+Xx,Xy =np.meshgrid(np.linspace(1+0.5/n,2-0.5/n,n), np.linspace(1+0.5/n,2-0.5/n,n))
 yMax = 2.5
-Xx,Xy =np.meshgrid(np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m), np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m))
 Yx,Yy =np.meshgrid(np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m), np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m))
 
-dx = 1.0/n * yMax
-dy = 1.0/n * yMax
+dx = 1.0/n
+dy = 1.0/m * yMax
 
 kernel = initialize_kernel(m, m, dy)
 
