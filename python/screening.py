@@ -286,7 +286,7 @@ u = np.zeros((m,m)).astype('float64')
 
 # %%
 
-phi_np = np.load(f'{image_folder}/phi.npy')
+# phi_np = np.load(f'{image_folder}/phi.npy')
 
 # fig,ax = plt.subplots(1,4,figsize=(14,4))
 pbar = tqdm.tqdm(range(1000000))
