@@ -456,11 +456,7 @@ public:
     std::vector< std::vector<int> > stencils_;
 
     HelperClass(
-            py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
-            py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, 
             const double dx, const double dy, const int n, const int m){
-        py::buffer_info psi_buf = psi_np.request();
-        py::buffer_info phi_buf = phi_np.request();
         
         this->n_ = n;
         this->m_ = m;
@@ -504,11 +500,8 @@ public:
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function_X(double x,double y, double dx, int n, std::vector<double>& func) const{
-        // double indj=fmin(n-1,fmax(0,(x-1.0)/dx-0.5));
-        // double indi=fmin(n-1,fmax(0,(y-1.0)/dx-0.5));
-
-        double indj=fmin(n-1,fmax(0,(x)/dx-0.5));
-        double indi=fmin(n-1,fmax(0,(y)/dx-0.5));
+        double indj=fmin(n-1,fmax(0,(x-1.0)/dx-0.5));
+        double indi=fmin(n-1,fmax(0,(y-1.0)/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
@@ -579,7 +572,8 @@ public:
             py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> rhsx_np, 
-            py::array_t<double, py::array::c_style | py::array::forcecast> rhsy_np){
+            py::array_t<double, py::array::c_style | py::array::forcecast> rhsy_np,
+            const double dx, const double dy, const int n, const int m){
 
         py::buffer_info outputx_buf = outputx_np.request();
         py::buffer_info outputy_buf = outputy_np.request();
@@ -594,27 +588,29 @@ public:
         double *rhsx = static_cast<double *>(rhsx_buf.ptr);
         double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
-        calculate_gradient_vxx(vxx_, psi, dx_, n_);
-        calculate_gradient_vyy(vyy_, psi, dx_, n_);
-        calculate_gradient_vxy(vxy_, psi, dx_, n_);
+        calculate_gradient_vxx(vxx_, psi, dx, n);
+        calculate_gradient_vyy(vyy_, psi, dx, n);
+        calculate_gradient_vxy(vxy_, psi, dx, n);
 
         // step 1: for each point we will find T(x)
-        for(int i=0;i<m_;++i){
-            for(int j=0;j<m_;++j){
-                int ind = i*m_+j;
+        for(int i=0;i<m;++i){
+            for(int j=0;j<m;++j){
+                int ind = i*m+j;
                 int jm = static_cast<int>(fmax(0,j-1));
                 int im = static_cast<int>(fmax(0,i-1));
-                int jp = static_cast<int>(fmin(m_-1,j+1));
-                int ip = static_cast<int>(fmin(m_-1,i+1));
-                double Sy1=(phi[i*m_+jp]-phi[i*m_+j])/(1.0*dy_);
-                double Sy2=(phi[ip*m_+j]-phi[i*m_+j])/(1.0*dy_);
+                int jp = static_cast<int>(fmin(m-1,j+1));
+                int ip = static_cast<int>(fmin(m-1,i+1));
+                double Sy1=(phi[i*m+jp]-phi[i*m+jm])/(2.0*dy_);
+                double Sy2=(phi[ip*m+j]-phi[im*m+j])/(2.0*dy_);
 
-                double vxx_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxx_);
-                double vyy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vyy_);
-                double vxy_val = - interpolate_function_X(Sy1,Sy2,dx_,n_,vxy_);
+                double vxx_val = - interpolate_function_X(Sy1,Sy2,dx,n,vxx_);
+                double vyy_val = - interpolate_function_X(Sy1,Sy2,dx,n,vyy_);
+                double vxy_val = - interpolate_function_X(Sy1,Sy2,dx,n,vxy_);
                 
+                // g^{\ib \jb} \partial_{\jb}(\phi - b)
                 outputx[ind] = vxx_val * rhsx[ind] + vxy_val * rhsy[ind];
                 outputy[ind] = vxy_val * rhsx[ind] + vyy_val * rhsy[ind];
+                
             }
         }
     }
@@ -856,8 +852,6 @@ PYBIND11_MODULE(screening, m) {
 
     py::class_<HelperClass>(m, "HelperClass")
         .def(py::init<
-                py::array_t<double, py::array::c_style | py::array::forcecast> , 
-                py::array_t<double, py::array::c_style | py::array::forcecast> , 
                 double, double, int, int>()) // py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, const double dx, const double dy
         .def("compute_inverse_g", &HelperClass::compute_inverse_g)
         .def("compute_inverse_g2", &HelperClass::compute_inverse_g2);
