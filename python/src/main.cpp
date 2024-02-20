@@ -3,6 +3,7 @@
 #include <pybind11/numpy.h>
 #include <iostream>
 #include <vector>
+#include <future>
 
 namespace py = pybind11;
 
@@ -80,30 +81,47 @@ void compute_dy(py::array_t<double, py::array::c_style | py::array::forcecast> o
 }
 
   
+double compute_cost(const double dx, const double dy, const int i, const int j, const int n, const int m, double xMin=-1.5, double yMin=-1.5){
+    xMin=-1.5; yMin=-1.5;
+    int i1 = i/n;
+    int i2 = i%n;
+
+    int j1 = j/m;
+    int j2 = j%m;
+
+    double x1 = (i1+0.5)*dx + xMin;
+    double x2 = (i2+0.5)*dx + xMin;
+
+    double y1 = (j1+0.5)*dy + yMin;
+    double y2 = (j2+0.5)*dy + yMin;
+
+    return 0.5 * ((x1-y1)*(x1-y1) + (x2-y2)*(x2-y2) );
+}
 /**
  * input f_np, a_np
  * output f_np
  */
-void c_transform_cpp(py::array_t<double, py::array::c_style | py::array::forcecast> out_np, py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, py::array_t<double, py::array::c_style | py::array::forcecast> cost_np){
+void c_transform_cpp(py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
+                     py::array_t<double, py::array::c_style | py::array::forcecast> phi_np,
+                     const double dx, const double dy, const int n, const int m, const double xMin, const double yMin){
    
-    py::buffer_info out_buf = out_np.request();
     py::buffer_info phi_buf = phi_np.request();
-    py::buffer_info cost_buf = cost_np.request();
-    double *out = static_cast<double *>(out_buf.ptr);
+    py::buffer_info psi_buf = psi_np.request();
     double *phi = static_cast<double *>(phi_buf.ptr);
-    double *cost = static_cast<double *>(cost_buf.ptr);
+    double *psi = static_cast<double *>(psi_buf.ptr);
 
-    int n1 = phi_buf.shape[0];
-    int n2 = phi_buf.shape[1];
-
-    int N = n1*n2;
-    // c-transform: calculate phi^c(x) = inf_y phi(y) + c(x,y) => phi^c_i = min_\jb \phi_\jb + c_{i, \jb}
+    int N = n*n;
+    int M = m*m;
+    // c-transform: calculate psi^c(x) = max_x psi(x) - c(x,y) => psi^c_\jb = min_i \psi_i - c_{i, \jb}
     for(int i=0;i<N;++i){
-        double val = phi[0] + cost[i*N+0];
-        for(int j=1;j<N;++j){
-            val = fmin(val, phi[j] + cost[i*N+j]);
+        int j = 0;
+        double cost = compute_cost(dx,dy,i,j,n,m,xMin,yMin); 
+        double val = phi[0] + cost;
+        for(int j=1;j<M;++j){
+            double cost = compute_cost(dx,dy,i,j,n,m,xMin,yMin); 
+            val = fmin(val, phi[j] + cost);
         }
-        out[i] = val;
+        psi[i] = val;
     }
 }
 
@@ -114,23 +132,24 @@ void c_transform_cpp(py::array_t<double, py::array::c_style | py::array::forceca
  * output f_np
  */
 void c_transform_forward_cpp(py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, 
-                             py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
-                             py::array_t<double, py::array::c_style | py::array::forcecast> cost_np){
+                             py::array_t<double, py::array::c_style | py::array::forcecast> psi_np,
+                             const double dx, const double dy, const int n, const int m){
    
     py::buffer_info phi_buf = phi_np.request();
     py::buffer_info psi_buf = psi_np.request();
-    py::buffer_info cost_buf = cost_np.request();
     double *phi = static_cast<double *>(phi_buf.ptr);
     double *psi = static_cast<double *>(psi_buf.ptr);
-    double *cost = static_cast<double *>(cost_buf.ptr);
 
     int N = psi_buf.shape[0];
     int M = phi_buf.shape[0];
     // c-transform: calculate psi^c(x) = max_x psi(x) - c(x,y) => psi^c_\jb = min_i \psi_i - c_{i, \jb}
     for(int j=0;j<M;++j){
-        double val = psi[0] - cost[0*M+j];
-        for(int i=1;i<N;++i){    
-            val = fmax(val, psi[i] - cost[i*M+j]);
+        int i = 0;
+        double cost = compute_cost(dx,dy,i,j,n,m);
+        double val = psi[0] - cost;
+        for(int i=1;i<N;++i){
+            double cost = compute_cost(dx,dy,i,j,n,m); 
+            val = fmax(val, psi[i] - cost);
         }
         phi[j] = val;
     }
@@ -191,6 +210,33 @@ void approx_push_cpp(py::array_t<double, py::array::c_style | py::array::forceca
     }
 }
 
+void pushforward_entropic_cpp(
+                py::array_t<double, py::array::c_style | py::array::forcecast> nu_np, 
+                py::array_t<double, py::array::c_style | py::array::forcecast> mu_np, 
+                py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
+                py::array_t<double, py::array::c_style | py::array::forcecast> phi_np,
+                double epsilon, 
+                double dx, double dy, double xMin, double yMin, int n, int m){
+   
+    py::buffer_info nu_buf  = nu_np.request();
+    py::buffer_info mu_buf  = mu_np.request();
+    py::buffer_info psi_buf = psi_np.request();
+    py::buffer_info phi_buf = phi_np.request();
+    double *nu = static_cast<double *>(nu_buf.ptr);
+    double *mu = static_cast<double *>(mu_buf.ptr);
+    double *psi = static_cast<double *>(psi_buf.ptr);
+    double *phi = static_cast<double *>(phi_buf.ptr);
+
+    int N = n*n;
+    int M = m*m;
+    for(int j=0;j<M;++j){
+        nu[j] = 0;
+        for(int i=0;i<N;++i){
+            double cost = compute_cost(dx, dy, i, j, n, m, xMin, yMin);
+            nu[j] += exp((psi[i] - phi[j] - cost)/epsilon) * mu[i];
+        }
+    }
+}
 
 
 /**
@@ -449,25 +495,22 @@ public:
     double dx_;
     double dy_;
 
-    std::vector<double> vxx_;
-    std::vector<double> vxy_;
-    std::vector<double> vyy_;
+    double *vxx_;
+    double *vxy_;
+    double *vyy_;
+
+    double *x1Map_;
+    double *x2Map_;
 
     std::vector< std::vector<int> > stencils_;
 
     HelperClass(
-            const double dx, const double dy, const int n, const int m){
+            const double dx, const double dy, const int n, const int m)
+            :n_(n), m_(m), dx_(dx), dy_(dy) {
         
-        this->n_ = n;
-        this->m_ = m;
-
-        this->dy_ = dy;
-        this->dx_ = dx;
-
-        vxx_.resize(n_*n_);
-        vxy_.resize(n_*n_);
-        vyy_.resize(n_*n_);
-
+        x1Map_ = new double[(n_+1)*(n_+1)];
+        x2Map_ = new double[(n_+1)*(n_+1)];
+            
         // stencils_ = {{0,1}, {2,1}, {1,1}, {1,2}};
         stencils_ = {{0,1}, {3,1}, {2,1}, {3,2}, {1,1}, {2,3}, {1,2}, {1,3}};
 
@@ -477,6 +520,11 @@ public:
                 stencils_.push_back( {- stencils_[i*N+j][1], stencils_[i*N+j][0]} );
             }
         }
+    }
+
+    ~HelperClass(){
+        delete[] x1Map_;
+        delete[] x2Map_;
     }
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
@@ -499,9 +547,9 @@ public:
     }
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
-    double interpolate_function_X(double x,double y, double dx, int n, std::vector<double>& func) const{
-        double indj=fmin(n-1,fmax(0,(x+1.0)/dx-0.5));
-        double indi=fmin(n-1,fmax(0,(y+1.0)/dx-0.5));
+    double interpolate_function_X(double x,double y, double dx, int n, double *func) const{
+        double indj=fmin(n-1,fmax(0,(x+1.5)/dx-0.5));
+        double indi=fmin(n-1,fmax(0,(y+1.5)/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
@@ -553,6 +601,32 @@ public:
         }
     }
 
+    void compute_for_loop(double *outputx, double *outputy, double *phi, double *rhsx, double *rhsy, double dx, double dy, int n, int m, double tau,  const int start_ind, const int end_ind){
+        for(int ind=start_ind;ind<end_ind;++ind){
+            int i = ind / m;
+            int j = ind % m;
+            // int jm = static_cast<int>(fmax(0,j-1));
+            // int im = static_cast<int>(fmax(0,i-1));
+            // int jp = static_cast<int>(fmin(m-1,j+1));
+            // int ip = static_cast<int>(fmin(m-1,i+1));
+            double y1 = (j+0.5)*dy - 1.5;
+            double y2 = (i+0.5)*dy - 1.5;
+            // psi(x) - phi(y) = (x-y)^2/(2 * tau)
+            // - tau \nabla phi(y) = y - S(y)
+            // S(y) = y + \tau \nabla \phi(y)
+            // T(x) = x - \tau \nabla \psi(x)
+            double Sy1= y1 + tau * rhsx[ind]; // S(y) = y + \tau \nabla \phi(y) where rhsx and rhsy are \phi(y)
+            double Sy2= y2 + tau * rhsy[ind];
+
+            double vxx_val = interpolate_function_X(Sy1,Sy2,dx,n,vxx_);
+            double vyy_val = interpolate_function_X(Sy1,Sy2,dx,n,vyy_);
+            double vxy_val = interpolate_function_X(Sy1,Sy2,dx,n,vxy_);
+            
+            // g^{\ib \jb} \partial_{\jb}(\phi - b)
+            outputx[ind] = (1-tau * vxx_val) * rhsx[ind] + (- tau * vxy_val) * rhsy[ind];
+            outputy[ind] = (- tau * vxy_val) * rhsx[ind] + (1-tau * vyy_val) * rhsy[ind];
+        }
+    }
 
     /**
      * (rhsx, rhsy) = \nabla (\phi - b)
@@ -573,7 +647,10 @@ public:
             py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> rhsx_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> rhsy_np,
-            const double dx, const double dy, const int n, const int m){
+            py::array_t<double, py::array::c_style | py::array::forcecast> vxx_np,
+            py::array_t<double, py::array::c_style | py::array::forcecast> vyy_np,
+            py::array_t<double, py::array::c_style | py::array::forcecast> vxy_np,
+            const double dx, const double dy, const int n, const int m, double tau){
 
         py::buffer_info outputx_buf = outputx_np.request();
         py::buffer_info outputy_buf = outputy_np.request();
@@ -581,6 +658,9 @@ public:
         py::buffer_info psi_buf = psi_np.request();
         py::buffer_info rhsx_buf = rhsx_np.request();
         py::buffer_info rhsy_buf = rhsy_np.request();
+        py::buffer_info vxx_buf = vxx_np.request();
+        py::buffer_info vyy_buf = vyy_np.request();
+        py::buffer_info vxy_buf = vxy_np.request();
         double *outputx = static_cast<double *>(outputx_buf.ptr);
         double *outputy = static_cast<double *>(outputy_buf.ptr);
         double *phi = static_cast<double *>(phi_buf.ptr);
@@ -588,32 +668,18 @@ public:
         double *rhsx = static_cast<double *>(rhsx_buf.ptr);
         double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
-        calculate_gradient_vxx(vxx_, psi, dx, n);
-        calculate_gradient_vyy(vyy_, psi, dx, n);
-        calculate_gradient_vxy(vxy_, psi, dx, n);
+        vxx_ = static_cast<double *>(vxx_buf.ptr);
+        vyy_ = static_cast<double *>(vyy_buf.ptr);
+        vxy_ = static_cast<double *>(vxy_buf.ptr);
 
-        // step 1: for each point we will find T(x)
-        for(int i=0;i<m;++i){
-            for(int j=0;j<m;++j){
-                int ind = i*m+j;
-                int jm = static_cast<int>(fmax(0,j-1));
-                int im = static_cast<int>(fmax(0,i-1));
-                int jp = static_cast<int>(fmin(m-1,j+1));
-                int ip = static_cast<int>(fmin(m-1,i+1));
-                double y1 = (j+0.5)*dy - 1.0;
-                double y2 = (i+0.5)*dy - 1.0;
-                double Sy1= y1 + rhsx[ind];
-                double Sy2= y2 + rhsy[ind];
-
-                double vxx_val = interpolate_function_X(Sy1,Sy2,dx,n,vxx_);
-                double vyy_val = interpolate_function_X(Sy1,Sy2,dx,n,vyy_);
-                double vxy_val = interpolate_function_X(Sy1,Sy2,dx,n,vxy_);
-                
-                // g^{\ib \jb} \partial_{\jb}(\phi - b)
-                outputx[ind] = (1-vxx_val) * rhsx[ind] + (-vxy_val)  * rhsy[ind];
-                outputy[ind] = (-vxy_val)  * rhsx[ind] + (1-vyy_val) * rhsy[ind];
-                
-            }
+        int THREADS_ = std::thread::hardware_concurrency();
+        std::vector<std::future<void> > changes(THREADS_); 
+        int N_int = m*m;
+        for(int th=0;th<THREADS_;++th){
+            changes[th] = std::async(std::launch::async, &HelperClass::compute_for_loop, this, outputx, outputy, phi, rhsx, rhsy, dx, dy,  n, m, tau, static_cast<int>(th*N_int/THREADS_), static_cast<int>((th+1)*N_int/THREADS_));
+        }
+        for(int th=0;th<THREADS_;++th){
+            changes[th].get();
         }
     }
 
@@ -624,6 +690,9 @@ public:
             py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> rhsx_np, 
             py::array_t<double, py::array::c_style | py::array::forcecast> rhsy_np,
+            py::array_t<double, py::array::c_style | py::array::forcecast> vxx_np,
+            py::array_t<double, py::array::c_style | py::array::forcecast> vyy_np,
+            py::array_t<double, py::array::c_style | py::array::forcecast> vxy_np,
             const double dx, const double dy, const int n, const int m){
 
         py::buffer_info outputx_buf = outputx_np.request();
@@ -632,6 +701,9 @@ public:
         py::buffer_info psi_buf = psi_np.request();
         py::buffer_info rhsx_buf = rhsx_np.request();
         py::buffer_info rhsy_buf = rhsy_np.request();
+        py::buffer_info vxx_buf = vxx_np.request();
+        py::buffer_info vyy_buf = vyy_np.request();
+        py::buffer_info vxy_buf = vxy_np.request();
         double *outputx = static_cast<double *>(outputx_buf.ptr);
         double *outputy = static_cast<double *>(outputy_buf.ptr);
         double *phi = static_cast<double *>(phi_buf.ptr);
@@ -639,9 +711,9 @@ public:
         double *rhsx = static_cast<double *>(rhsx_buf.ptr);
         double *rhsy = static_cast<double *>(rhsy_buf.ptr);
 
-        calculate_gradient_vxx(vxx_, psi, dx, n);
-        calculate_gradient_vyy(vyy_, psi, dx, n);
-        calculate_gradient_vxy(vxy_, psi, dx, n);
+        // calculate_gradient_vxx(vxx_, psi, dx, n);
+        // calculate_gradient_vyy(vyy_, psi, dx, n);
+        // calculate_gradient_vxy(vxy_, psi, dx, n);
 
         // step 1: for each point we will find T(x)
         for(int i=0;i<m;++i){
@@ -776,6 +848,143 @@ public:
         double xprimeyprime = - (x_prime1*y_prime1 + x_prime2*y_prime2);
         return xyprime + xprimey - xy - xprimeyprime;
     }
+
+    // pushforward(nu, psi, mu)
+    void pushforward(
+                py::array_t<double, py::array::c_style | py::array::forcecast> rho_np, 
+                py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
+                py::array_t<double, py::array::c_style | py::array::forcecast> mu_np
+                ){
+
+        py::buffer_info psi_buf  = psi_np.request();
+        py::buffer_info mu_buf   = mu_np.request();
+        py::buffer_info rho_buf   = rho_np.request();
+
+        double *psi = static_cast<double *> (psi_buf.ptr);
+        double *mu  = static_cast<double *> (mu_buf.ptr);
+        double *rho = static_cast<double *> (rho_buf.ptr);
+
+        calc_pushforward_map(psi, dx_, n_); // this will update x1Map and x2Map
+        sampling_pushforward(rho, mu, dx_, dy_, n_, m_);
+    }
+
+    void calc_pushforward_map(double *dual, double dx, int n){
+        for(int i=1;i<n;i++){
+            for(int j=1;j<n;j++){
+                int im = fmax(0, i-1);
+                int jm = fmax(0, j-1);
+                
+                x1Map_[i*(n+1)+j] = - (dual[i*n+j+1]  -dual[i*n+jm])/(2.0*dx) + (j+0.5)*dx;
+                x2Map_[i*(n+1)+j] = - (dual[(i+1)*n+j]-dual[im*n+j])/(2.0*dx) + (i+0.5)*dx;
+            }
+        }
+        
+    }
+    int sgn(double x){
+        
+        int truth=(x>0)-(x<0);
+        return truth;
+        
+    }
+    double interpolate_function(double *function, double x, const double y, const double dx, const int n){
+        
+        int xIndex=fmin(fmax(x/dx-.5 ,0),n-1);
+        int yIndex=fmin(fmax(y/dx-.5 ,0),n-1);
+        
+        double xfrac=x/dx-xIndex-.5;
+        double yfrac=y/dx-yIndex-.5;
+        
+        int xOther=xIndex+sgn(xfrac);
+        int yOther=yIndex+sgn(yfrac);
+        
+        xOther=fmax(fmin(xOther, n-1),0);
+        yOther=fmax(fmin(yOther, n-1),0);
+        
+        double v1=(1-fabs(xfrac))*(1-fabs(yfrac))*function[yIndex*n+xIndex];
+        double v2=fabs(xfrac)*(1-fabs(yfrac))*function[yIndex*n+xOther];
+        double v3=(1-fabs(xfrac))*fabs(yfrac)*function[yOther*n+xIndex];
+        double v4=fabs(xfrac)*fabs(yfrac)*function[yOther*n+xOther];
+        
+        double v=v1+v2+v3+v4;
+        
+        return v;
+        
+    }
+    void sampling_pushforward(double *rho, const double *mu, const double dx, const double dy, const int n, const int m){
+        for(int i=0;i<n;i++){
+            for(int j=0;j<n;j++){
+                
+                double mass=mu[i*n+j];
+                
+                if(mass>0){
+                    
+                    double xStretch0=fabs(x1Map_[i*(n+1)+j+1]-x1Map_[i*(n+1)+j]);
+                    double xStretch1=fabs(x1Map_[(i+1)*(n+1)+j+1]-x1Map_[(i+1)*(n+1)+j]);
+                    
+                    double yStretch0=fabs(x2Map_[(i+1)*(n+1)+j]-x2Map_[i*(n+1)+j]);
+                    double yStretch1=fabs(x2Map_[(i+1)*(n+1)+j+1]-x2Map_[i*(n+1)+j+1]);
+                    
+                    double xStretch=fmax(xStretch0, xStretch1);
+                    double yStretch=fmax(yStretch0, yStretch1);
+                    
+                    int xSamples=fmax(xStretch/dx,1);
+                    int ySamples=fmax(yStretch/dx,1);
+
+                    double factor=1/(xSamples*ySamples*1.0);
+                    
+                    for(int l=0;l<ySamples;l++){
+                        for(int k=0;k<xSamples;k++){
+                            
+                            double a=(k+.5)/(xSamples*1.0);
+                            double b=(l+.5)/(ySamples*1.0);
+                            
+                            double xPoint=(1-b)*(1-a)*x1Map_[i*(n+1)+j]+(1-b)*a*x1Map_[i*(n+1)+j+1]+b*(1-a)*x1Map_[(i+1)*(n+1)+j]+a*b*x1Map_[(i+1)*(n+1)+(j+1)];
+                            double yPoint=(1-b)*(1-a)*x2Map_[i*(n+1)+j]+(1-b)*a*x2Map_[i*(n+1)+j+1]+b*(1-a)*x2Map_[(i+1)*(n+1)+j]+a*b*x2Map_[(i+1)*(n+1)+(j+1)];
+                            
+                            double X=xPoint/dy-.5;
+                            double Y=yPoint/dy-.5;
+                            
+                            int xIndex=X;
+                            int yIndex=Y;
+                            
+                            double xFrac=X-xIndex;
+                            double yFrac=Y-yIndex;
+                            
+                            int xOther=xIndex+1;
+                            int yOther=yIndex+1;
+                            
+                            xIndex=fmin(fmax(xIndex,0),m-1);
+                            xOther=fmin(fmax(xOther,0),m-1);
+                            
+                            yIndex=fmin(fmax(yIndex,0),m-1);
+                            yOther=fmin(fmax(yOther,0),m-1);
+                            
+                            
+                            rho[yIndex*m+xIndex]+=(1-xFrac)*(1-yFrac)*mass*factor;
+                            rho[yOther*m+xIndex]+=(1-xFrac)*yFrac*mass*factor;
+                            rho[yIndex*m+xOther]+=xFrac*(1-yFrac)*mass*factor;
+                            rho[yOther*m+xOther]+=xFrac*yFrac*mass*factor;
+                            
+                        }
+                    }   
+                }
+            }
+        }
+        
+        double sum       = 0;
+        double totalMass = 0;
+        for(int i=0,N=m*m;i<N;i++){
+            sum += rho[i];
+        }
+        sum *= dy * dy;
+        for(int i=0,N=n*n;i<N;i++){
+            totalMass +=  mu[i];
+        }
+        totalMass *= dx * dx;
+        for(int i=0,N=m*m;i<N;i++){
+            rho[i]*=totalMass/sum;
+        }
+    }
 };
     
 
@@ -813,7 +1022,7 @@ void compute_first_variation_cpp(
     // double *cost  = static_cast<double *>(cost_buf.ptr);
     // double *b     = static_cast<double *>(b_buf.ptr);
     
-    int N = n*n;
+    // int N = n*n;
     int M = m*m;
     
     // I will just assume neumann although neumann is not really the correct thing to use
@@ -891,6 +1100,8 @@ PYBIND11_MODULE(screening, m) {
     m.def("c_transform_forward_cpp", &c_transform_forward_cpp, "c transform from psi -> phi");
 
     m.def("approx_push_cpp", &approx_push_cpp, "approximate pushforward");
+    m.def("pushforward_entropic_cpp", &pushforward_entropic_cpp, "entropic pushforward");
+    
     m.def("c_transform_epsilon_cpp", &c_transform_epsilon_cpp, "entropic c-transform");
     m.def("compute_nu_and_rho_cpp", &compute_nu_and_rho_cpp, "compute nu and rho");
 
@@ -903,5 +1114,6 @@ PYBIND11_MODULE(screening, m) {
         .def(py::init<
                 double, double, int, int>()) // py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, const double dx, const double dy
         .def("compute_inverse_g", &HelperClass::compute_inverse_g)
-        .def("compute_inverse_g2", &HelperClass::compute_inverse_g2);
+        .def("compute_inverse_g2", &HelperClass::compute_inverse_g2)
+        .def("pushforward", &HelperClass::pushforward);
 }
