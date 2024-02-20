@@ -1,10 +1,6 @@
 # %%
-# Run if you are on Google Colab to install the Python bindings
 import os
-os.system('bash compile.sh')
-
-# %%
-import os
+import argparse
 import numpy as np
 from scipy.fftpack import dctn, idctn
 import tqdm
@@ -23,10 +19,29 @@ import torch.nn.functional as F
 import torch.autograd as autograd
 import torch
 
+parser = argparse.ArgumentParser()
+
+# general arguments
+parser.add_argument('--num_iter', type=int, default=5000, help="Total number of iteration")
+parser.add_argument('--plot_every', type=int, default=1000, help="Frequency of saving plots")
+parser.add_argument('--starting_epoch', type=int, default=0, help="Starting epoch number. If the value is nonzero than it will load the saved data.")
+parser.add_argument('--saving', type=str, default='0')
+# arguments for Gaussian mixture application
+parser.add_argument('--lr', type=float, default=1e-5, help="Step size of the gradient ascent")
+parser.add_argument('--tau', type=float, default=1.0, help="parameter for the c-transform")
+
+args = parser.parse_args()
+print(args)
+
 cuda = True if torch.cuda.is_available() else False
-image_folder = "images-other5"
+image_folder = f'image-{args.saving}'
 os.makedirs(image_folder, exist_ok=True)
-desc = "using anti identity"
+desc = f'using tau={args.tau:0.2e}'
+
+
+# %%
+# Run if you are on Google Colab to install the Python bindings
+os.system('bash compile.sh')
 
 # %%
 # Initialize Fourier kernel
@@ -204,7 +219,7 @@ def compute_rhs(phi_np, psi_np, nu_np, b, helper, dx, dy, n, m):
   R1y1 = np.zeros((m,m)).astype('float64')
   R2y2 = np.zeros((m,m)).astype('float64')
 
-  helper.compute_inverse_g(R1, R2, phi_np, psi_np, fy1, fy2, dx, dy, n, m)
+  helper.compute_inverse_g(R1, R2, phi_np, psi_np, fy1, fy2, dx, dy, n, m, tau)
 
   R1 *= nu_np.reshape((m,m))
   R2 *= nu_np.reshape((m,m))
@@ -229,24 +244,28 @@ def solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, n, m
 # %%
 # parameters
 # grid size n x n
-n = 30
-m = 50
+n = 60
+m = 60
 
 # step size for the gradient ascent
 sigma = 1e-5
-max_iteration = 100000
+tau = args.tau
+max_iteration = 1000000
 
 # epsilon for pushforward
-eps = 1e-2
+eps = 1e-3
 yMax = 2.5
-Xx,Xy =np.meshgrid(np.linspace(1+0.5/n,2-0.5/n,n), np.linspace(1+0.5/n,2-0.5/n,n))
-Yx,Yy =np.meshgrid(np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m), np.linspace(yMax*0.5/m,yMax*(1-0.5/m),m))
+Xx,Xy =np.meshgrid(np.linspace(0.5/n,1-0.5/n,n), np.linspace(0.5/n,1-0.5/n,n))
+Xx = (Xx - 0.5) * 2
+Xy = (Xy - 0.5) * 2
+Yx,Yy =np.meshgrid(np.linspace(0.5/m,1-0.5/m,m), np.linspace(0.5/m,1-0.5/m,m))
+Yx = (Yx - 0.5) * 2
+Yy = (Yy - 0.5) * 2
 
-# dx = 1.0/n
-# dy = 1.0/m * yMax
+dx = Xx[0,1] - Xx[0,0]
+dy = Yx[0,1] - Yx[0,0]
 
-dx = 1.0/n
-dy = dx * yMax
+print(f'dx: {dx}, dy: {dy}')
 
 kernel = initialize_kernel(m, m, dy)
 
@@ -258,30 +277,34 @@ Yv = np.zeros((m*m,2))
 Yv[:,0] = Yx.reshape((m*m,))
 Yv[:,1] = Yy.reshape((m*m,))
 
-# cost = - np.sum(Xv.reshape((n*n,1,2)) * Yv.reshape((1,m*m,2)),axis=2)
-cost = - Xv @ Yv.T
+cost = ((Xv.reshape((n*n,1,2)) - Yv.reshape((1,m*m,2)))**2).sum(2) / (2.0 * tau)
 print("size of cost: ", cost.shape)
-b = 0.5 * (Yx**2 + Yy**2)
+b = 0.5 * (Yx**2 + Yy**2) * 0
 b = b.astype('float64').flatten()  
 
-psi_np = (- 0.5*(Xx**2+Xy**2)).astype('float64')
-psi_np = psi_np.flatten()
-
+psi_np = np.zeros((n*n)).astype('float64')
 psi_eps_np = np.zeros((n*n)).astype('float64')
 phi_checking = np.zeros((m*m))
-c_transform_forward_cpp(phi_checking, psi_np, cost)
+# c_transform_forward_cpp(phi_checking, psi_np, cost)
+c_transform_forward(phi_checking, psi_np, cost) # non-entropic
 plt.imshow(phi_checking.reshape((m,m)),origin='lower')
 plt.savefig("sanity_check_c_transform.png")
 plt.close('all')
 
 phi_np = np.zeros((m*m)).astype('float64')
 nu_np  = np.zeros((m*m)).astype('float64')
+mu_np  = np.zeros((n,n)).astype('float64')
+mu_radius = 0.75
+mu_np[(Xx**2 + Xy**2 < mu_radius**2)] = 1
+mu_np /= mu_np.sum() * dx * dx
+mu_np  = mu_np.flatten()
 
 c_transform_forward(phi_np, psi_np, cost)
 
 plan = np.exp( (psi_np.reshape((-1,1)) - phi_np.reshape((1,-1)) - cost)/eps )
-plan /= plan.sum() * dx * dx * dy * dy
-nu_np[:] = plan.sum(axis=0) * dx*dx
+plan /= plan.sum(axis=1).reshape((n*n,1))* dy * dy
+plan = plan * mu_np.reshape((n*n,1))
+nu_np[:] = (plan).sum(axis=0) * dx*dx
 
 fig, ax = plt.subplots(1,1)
 ax.contourf(Yx,Yy,nu_np.reshape((m,m)), 60)
@@ -295,21 +318,21 @@ u = np.zeros((m,m)).astype('float64')
 
 # %%
 
-# phi_np = np.load(f'{image_folder}/phi.npy')
-
-# fig,ax = plt.subplots(1,4,figsize=(14,4))
-pbar = tqdm.tqdm(range(1000000))
+# if starting epoch > 0 then load the saved data.
+if args.starting_epoch > 0:
+    phi_np = np.load(f'{image_folder}/phi.npy')
 
 J_list = []
 
 Tx = np.zeros((n,n))
 Ty = np.zeros((n,n))
-
 rhs = np.zeros((m,m))
+
+pbar = tqdm.tqdm(range(args.starting_epoch, args.num_iter))
 
 for it in pbar:
   c_transform(psi_np, phi_np, cost) # non-entropic
-  compute_ctransform_eps(psi_eps_np, phi_np, cost, eps, dy) # entropic
+  # compute_ctransform_eps(psi_eps_np, phi_np, cost, eps, dy) # entropic
 
   # print(f"min: {torch.min(psi_np.view((n*n,1)) - phi_np.view((1,n*n)) - cost)} max: {torch.max(psi_np.view((n*n,1)) - phi_np.view((1,n*n)) - cost)}")
 
@@ -321,8 +344,10 @@ for it in pbar:
 
   rhs = solve_main_poisson(u, phi_np, psi_np, nu_np, b, kernel, helper, dx, dy, n, m)
   error = np.mean(u**2)
-  phi_np += sigma * u.flatten()
-  phi_np[0] = 0
+  phi_np += sigma * rhs.flatten()
+  phi_np = phi_np.reshape((m,m))
+  phi_np[(Yx**2+Yy**2)>mu_radius**2] = 0
+  phi_np = phi_np.flatten()
 
   # find the value of J
   J_val = ((phi_np - b) * nu_np).sum() * dy*dy
@@ -332,10 +357,9 @@ for it in pbar:
   compute_dx(Tx, psi_np.reshape((n,n)), dx)
   compute_dy(Ty, psi_np.reshape((n,n)), dx)
 
-  Tx = -Tx; Ty = -Ty
+  Tx = Xx - args.tau * Tx; Ty = Xy - args.tau * Ty
 
-  skip = 100
-  if it % skip == 0:
+  if it % args.plot_every == 0:
     np.save( f"{image_folder}/phi.npy", phi_np)
     fig,ax = plt.subplots(1,6,figsize=(18,4),constrained_layout=True)
     ax[0].contourf(Yx,Yy,np.log(1+np.log(1+nu_np)).reshape((m,m)),60)
@@ -354,7 +378,7 @@ for it in pbar:
     ax[5].set_aspect('equal')
     ax[5].set_title('Tx')
     plt.suptitle(f"it={it} error={error:0.2e}\nsigma: {sigma:0.2e}\n{desc}")
-    filename = f"{image_folder}/{it//skip}.png"
+    filename = f"{image_folder}/{it//args.plot_every}.png"
     plt.savefig(filename)
     plt.savefig(f"{image_folder}/000-status.png")
     plt.close('all')
