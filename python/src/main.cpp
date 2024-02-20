@@ -500,8 +500,8 @@ public:
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function_X(double x,double y, double dx, int n, std::vector<double>& func) const{
-        double indj=fmin(n-1,fmax(0,(x-1.0)/dx-0.5));
-        double indi=fmin(n-1,fmax(0,(y-1.0)/dx-0.5));
+        double indj=fmin(n-1,fmax(0,(x+1.0)/dx-0.5));
+        double indi=fmin(n-1,fmax(0,(y+1.0)/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
@@ -600,6 +600,57 @@ public:
                 int im = static_cast<int>(fmax(0,i-1));
                 int jp = static_cast<int>(fmin(m-1,j+1));
                 int ip = static_cast<int>(fmin(m-1,i+1));
+                double y1 = (j+0.5)*dy - 1.0;
+                double y2 = (i+0.5)*dy - 1.0;
+                double Sy1= y1 + rhsx[ind];
+                double Sy2= y2 + rhsy[ind];
+
+                double vxx_val = interpolate_function_X(Sy1,Sy2,dx,n,vxx_);
+                double vyy_val = interpolate_function_X(Sy1,Sy2,dx,n,vyy_);
+                double vxy_val = interpolate_function_X(Sy1,Sy2,dx,n,vxy_);
+                
+                // g^{\ib \jb} \partial_{\jb}(\phi - b)
+                outputx[ind] = (1-vxx_val) * rhsx[ind] + (-vxy_val)  * rhsy[ind];
+                outputy[ind] = (-vxy_val)  * rhsx[ind] + (1-vyy_val) * rhsy[ind];
+                
+            }
+        }
+    }
+
+    void compute_inverse_g_original(
+            py::array_t<double, py::array::c_style | py::array::forcecast> outputx_np, 
+            py::array_t<double, py::array::c_style | py::array::forcecast> outputy_np, 
+            py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, 
+            py::array_t<double, py::array::c_style | py::array::forcecast> psi_np, 
+            py::array_t<double, py::array::c_style | py::array::forcecast> rhsx_np, 
+            py::array_t<double, py::array::c_style | py::array::forcecast> rhsy_np,
+            const double dx, const double dy, const int n, const int m){
+
+        py::buffer_info outputx_buf = outputx_np.request();
+        py::buffer_info outputy_buf = outputy_np.request();
+        py::buffer_info phi_buf = phi_np.request();
+        py::buffer_info psi_buf = psi_np.request();
+        py::buffer_info rhsx_buf = rhsx_np.request();
+        py::buffer_info rhsy_buf = rhsy_np.request();
+        double *outputx = static_cast<double *>(outputx_buf.ptr);
+        double *outputy = static_cast<double *>(outputy_buf.ptr);
+        double *phi = static_cast<double *>(phi_buf.ptr);
+        double *psi = static_cast<double *>(psi_buf.ptr);
+        double *rhsx = static_cast<double *>(rhsx_buf.ptr);
+        double *rhsy = static_cast<double *>(rhsy_buf.ptr);
+
+        calculate_gradient_vxx(vxx_, psi, dx, n);
+        calculate_gradient_vyy(vyy_, psi, dx, n);
+        calculate_gradient_vxy(vxy_, psi, dx, n);
+
+        // step 1: for each point we will find T(x)
+        for(int i=0;i<m;++i){
+            for(int j=0;j<m;++j){
+                int ind = i*m+j;
+                int jm = static_cast<int>(fmax(0,j-1));
+                int im = static_cast<int>(fmax(0,i-1));
+                int jp = static_cast<int>(fmin(m-1,j+1));
+                int ip = static_cast<int>(fmin(m-1,i+1));
                 double Sy1=(phi[i*m+jp]-phi[i*m+jm])/(2.0*dy_);
                 double Sy2=(phi[ip*m+j]-phi[im*m+j])/(2.0*dy_);
 
@@ -614,8 +665,6 @@ public:
             }
         }
     }
-
-
 
     /**
      * (rhsx, rhsy) = \nabla (\phi - b)
