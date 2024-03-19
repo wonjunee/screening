@@ -13,11 +13,11 @@ parser = argparse.ArgumentParser()
 
 # general arguments
 parser.add_argument('--num_iter', type=int, default=5000, help="Total number of iteration")
-parser.add_argument('--plot_every', type=int, default=1000, help="Frequency of saving plots")
+parser.add_argument('--plot_every', type=int, default=100, help="Frequency of saving plots")
 parser.add_argument('--starting_epoch', type=int, default=0, help="Starting epoch number. If the value is nonzero than it will load the saved data.")
 parser.add_argument('--saving', type=str, default='0')
 # arguments for Gaussian mixture application
-parser.add_argument('--lr', type=float, default=1e-5, help="Step size of the gradient ascent")
+parser.add_argument('--lr', type=float, default=1e-3, help="Step size of the gradient ascent")
 parser.add_argument('--tau', type=float, default=1.0, help="parameter for the c-transform")
 
 args = parser.parse_args()
@@ -216,8 +216,8 @@ def solve_main_poisson(u, phi_np, psi_np, nu_np, kernel, helper, dx, dy, n, m):
 # %%
 # parameters
 # grid size n x n
-n = 50
-m = 80
+n = 128
+m = 128
 
 # step size for the gradient ascent
 sigma = args.lr
@@ -275,7 +275,7 @@ mu_np[(Xx**2 + Xy**2 < mu_radius**2)] = 1
 mu_np /= mu_np.sum() * dx * dx
 mu_np  = mu_np.flatten()
 
-helper = HelperClass(dx, dy, n, m, xMin, yMin))
+helper = HelperClass(dx, dy, n, m, xMin, yMin)
 
 # helper.pushforward(nu_np, psi_np, mu_np)
 pushforward_entropic_cpp(nu_np, mu_np, psi_np, phi_np, eps, dx, dy, -1.2, -1.2, n, m); nu_np /= nu_np.sum()*(dy*dy)
@@ -329,6 +329,8 @@ def compute_pushforward(nu_np, mu_np, psi_np, phi_np, dx, dy, n, m, cost=None, e
     # nu_np[:] = (plan).sum(axis=0) * dx*dx
 
 # phi_np*=0
+
+phi_np = np.load( f"{image_folder}/phi.npy")
 
 for it in pbar:
   compute_c_transform(psi_np, phi_np, dx, dy, n, m, method='nonentropic')

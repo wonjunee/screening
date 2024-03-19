@@ -82,7 +82,6 @@ void compute_dy(py::array_t<double, py::array::c_style | py::array::forcecast> o
 
   
 double compute_cost(const double dx, const double dy, const int i, const int j, const int n, const int m, double xMin=-1.5, double yMin=-1.5){
-    xMin=-1.5; yMin=-1.5;
     int i1 = i/n;
     int i2 = i%n;
 
@@ -502,11 +501,14 @@ public:
     double *x1Map_;
     double *x2Map_;
 
+    double xMin_;
+    double yMin_;
+
     std::vector< std::vector<int> > stencils_;
 
     HelperClass(
-            const double dx, const double dy, const int n, const int m)
-            :n_(n), m_(m), dx_(dx), dy_(dy) {
+            const double dx, const double dy, const int n, const int m, const double xMin, const double yMin)
+            :n_(n), m_(m), dx_(dx), dy_(dy), xMin_(xMin), yMin_(yMin) {
         
         x1Map_ = new double[(n_+1)*(n_+1)];
         x2Map_ = new double[(n_+1)*(n_+1)];
@@ -548,8 +550,8 @@ public:
 
     // This function will provide S1(x,) where x and y are n [0,1] double values
     double interpolate_function_X(double x,double y, double dx, int n, double *func) const{
-        double indj=fmin(n-1,fmax(0,(x+1.5)/dx-0.5));
-        double indi=fmin(n-1,fmax(0,(y+1.5)/dx-0.5));
+        double indj=fmin(n-1,fmax(0,(x-xMin_)/dx-0.5));
+        double indi=fmin(n-1,fmax(0,(y-xMin_)/dx-0.5));
 
         double lambda1=indj-(int)indj;
         double lambda2=indi-(int)indi;
@@ -609,8 +611,8 @@ public:
             // int im = static_cast<int>(fmax(0,i-1));
             // int jp = static_cast<int>(fmin(m-1,j+1));
             // int ip = static_cast<int>(fmin(m-1,i+1));
-            double y1 = (j+0.5)*dy - 1.5;
-            double y2 = (i+0.5)*dy - 1.5;
+            double y1 = (j+0.5)*dy - yMin_;
+            double y2 = (i+0.5)*dy - yMin_;
             // psi(x) - phi(y) = (x-y)^2/(2 * tau)
             // - tau \nabla phi(y) = y - S(y)
             // S(y) = y + \tau \nabla \phi(y)
@@ -1112,7 +1114,7 @@ PYBIND11_MODULE(screening, m) {
 
     py::class_<HelperClass>(m, "HelperClass")
         .def(py::init<
-                double, double, int, int>()) // py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, const double dx, const double dy
+                double, double, int, int, double, double>()) // py::array_t<double, py::array::c_style | py::array::forcecast> phi_np, const double dx, const double dy
         .def("compute_inverse_g", &HelperClass::compute_inverse_g)
         .def("compute_inverse_g2", &HelperClass::compute_inverse_g2)
         .def("pushforward", &HelperClass::pushforward);
